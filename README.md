@@ -1,6 +1,9 @@
 # potential_fields
 Merry the robot with potential fields for joint control for EECS 499 Research Project.
 
+# install rospy
+* add it to your shell path
+
 # install Cython, PCL for Python
 * sudo apt-get install python-dev build-essential
 * Download latest release from http://cython.org and untar it to ~/libraries
@@ -21,6 +24,11 @@ Merry the robot with potential fields for joint control for EECS 499 Research Pr
 * -- cd libfreenect/wrappers/python
 * -- python setup.py build_ext --inplace
 
+# Extract raw data from Kinect
+* http://answers.ros.org/question/9803/extracting-raw-data-from-kinect/
+
 now, in python you can:
+from roslib import message
+import sensor_msgs.point_cloud2 as pc2
 import freenect
 import pcl
