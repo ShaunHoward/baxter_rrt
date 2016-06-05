@@ -1,12 +1,20 @@
 __author__ = 'shaun howard'
 import baxter_interface
+import math
+import numpy as np
 import rospy
+import tf
+from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
+from sensor_msgs import point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2
 
 from geometry_msgs.msg import (
     PoseStamped,
     Pose,
     Point,
+    PointStamped,
     Quaternion,
+    TransformStamped
 )
 
 from baxter_core_msgs.srv import (
@@ -21,7 +29,9 @@ OK = "OK"
 ERROR = "ERROR"
 
 
-G_HOME = Pose(1, 2, 3, 4, 5, 6)
+#G_HOME = Pose(1, 2, 3, 4, 5, 6)
+
+points = None
 
 
 def start_pcl():
@@ -33,25 +43,101 @@ def start_pcl():
     fil.set_std_dev_mul_thresh (1.0)
     fil.filter().to_file("inliers.pcd")
 
+
+# def extract_closest_points():
+#     global points
+#     for x, y, z in points:
+#
+
+
 class Merry():
 
     curr_goal = None
     curr_pose = None
     latest_obstacles = []
+    tf_listener = None
 
     # initialize and enable the robot and the named limb
     def __init__(self, limb_name="left", dist_to_remain_above=.15, is_debug=True):
-        self.limb = baxter_interface.Limb(limb_name)
-        self.limb_name = limb_name
-        ik_service = "".join(["ExternalTools/", limb_name, "/PositionKinematicsNode/IKService"])
+        rospy.init_node("merry")
+        # self.limb = baxter_interface.Limb(limb_name)
+        #self.limb_name = limb_name
+        #ik_service = "".join(["ExternalTools/", limb_name, "/PositionKinematicsNode/IKService"])
         self.dist_to_remain_above = dist_to_remain_above
         self.is_debug = is_debug
-        self.gripper = baxter_interface.Gripper(limb_name)
-        self.ik_service = rospy.ServiceProxy(ik_service, SolvePositionIK)
-        rospy.wait_for_service(ik_service, TIMEOUT)
-        self.state = baxter_interface.RobotEnable(baxter_interface.CHECK_VERSION)
-        self.state.enable()
-        self.curr_goal = G_HOME
+        #self.gripper = baxter_interface.Gripper(limb_name)
+        #self.ik_service = rospy.ServiceProxy(ik_service, SolvePositionIK)
+        #rospy.wait_for_service(ik_service, TIMEOUT)
+        #self.state = baxter_interface.RobotEnable(baxter_interface.CHECK_VERSION)
+        #self.state.enable()
+        #self.curr_goal = G_HOME
+        self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", PointCloud2, self.kinect_cb)
+        #self.tf_listener = tf.TransformListener()
+
+    def kinect_cb(self, data):
+        """
+        Receives kinect points from the kinect subscriber linked to the publisher stream.
+        :return: kinect points numpy array
+        """
+        height = data.height
+        width = data.width
+        global points
+        points = np.array([], dtype=tuple)
+        curr_index = 0
+        print "above it "
+        #(trans, rot) = self.tf_listener.lookupTransform("right_gripper", "kinect_link", data.header.stamp)
+        # self.tf_listener.fromTranslationRotation(trans, rot)
+        # #if trans and rot:
+        #     t = TransformStamped()
+        #     t.header.stamp = data.header.stamp
+        #     t.header.frame_id = "kinect_link"
+        #     t.transform.translation.x = trans[0]
+        #     t.transform.translation.y = trans[1]
+        #     t.transform.translation.z = trans[2]
+        #     t.transform.rotation.x = rot[0]
+        #     t.transform.rotation.y = rot[1]
+        #     t.transform.rotation.z = rot[2]
+        #     t.transform.rotation.w = rot[3]
+        #     cloud_wrt_gripper = do_transform_cloud(data, transform=t)
+        #     print "got a transformed cloud!!"
+        # print "got here"
+        # print (kinect_wrt_right_gripper)
+        # self.lookup_transform()
+        # trans, rot = self.lookup_transform()
+        # if trans:
+        #     print (trans)
+        #     point_cloud = None
+        #     pc2.read_points(point_cloud)
+        # for x, y, z in pc2.read_points(data, field_names=("x", "y", "z"), skip_nans=True):
+        #     ps = PointStamped()
+        #     ps.header.frame_id = 'kinect/depth/points'
+        #     ps.header.stamp = rospy.get_rostime()
+        #     try:
+        #         self.tf_listener.waitForTransform("kinect/depth/points", "right_gripper", ps.header.stamp,
+        #                                           rospy.Duration(2.0))
+        #         point_wrt_gripper = self.tf_listener.transformPoint("right_gripper", ps)
+        #         curr_dist = math.sqrt(point_wrt_gripper.point.x**2 + point_wrt_gripper.point.y**2)
+        #         print "current distance from kinect to point"
+        #     except tf.Exception as e:
+        #         print e
+        #         print "failed transforming kinect point to right gripper..."
+        #
+        #
+        #     points = np.append(points,  np.array([(x, y, z)], dtype=tuple))
+        #     curr_index += 1
+        # # np.set_printoptions(precision=3)
+        # print(points)
+
+    # def lookup_transform(self, from_frame="kinect_link", to_frame="right_gripper"):
+    #     """"
+    #     :return: a set of points converted from_frame to_frame.
+    #     """
+    #     # rosrun tf tf_echo right_gripper right_hand_camera
+    #     if self.tf_listener.frameExists(to_frame) and self.tf_listener.frameExists(from_frame):
+    #         t = self.tf_listener.getLatestCommonTime(to_frame, from_frame)
+    #         position, quaternion = self.tf_listener.lookupTransform(to_frame, from_frame, t)
+    #         print position, quaternion
+    #     return position, quaternion
 
     def curr_pose_callback(self):
         # get the arm side's current pose
@@ -133,11 +219,13 @@ if __name__ == '__main__':
     goal = None
     merry = Merry()
     while not rospy.is_shutdown():
-        if goal:
-            status = merry.plan_and_execute(goal)
-            if status is OK:
-                # reset goal, wait for next oen
-                goal = None
-            else:
-                # reset robot, leave planning loop running
-                merry.reset()
+        #print "got in main loop"
+        pass
+        # if goal:
+        #     status = merry.plan_and_execute(goal)
+        #     if status is OK:
+        #         # reset goal, wait for next oen
+        #         goal = None
+        #     else:
+        #         # reset robot, leave planning loop running
+        #         merry.reset()
