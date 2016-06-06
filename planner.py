@@ -6,7 +6,7 @@ from scipy.stats import norm
 virtualforce = False
 
 
-class Baxter():
+class PotentialFieldPlanner():
     def __init__(self, p, obstacles, dt, m, fMax, diam):
         rospy.init_node("baxter_potential_field")
         self.diam = diam
