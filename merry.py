@@ -3,6 +3,7 @@ import baxter_interface
 import math
 import numpy as np
 import rospy
+import os
 import tf
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 from sensor_msgs import point_cloud2 as pc2
@@ -49,18 +50,32 @@ def start_pcl():
 #     for x, y, z in points:
 #
 
+def shake_hands(merry):
+    """
+    Tries to shake the nearest hand possible using the limb instantiated.
+    Loop runs forever; kill with ctrl-c.
+    """
+    if merry.plan_and_execute() is "OK":
+        return 0
+    return 1
+
+
 class Merry(object):
 
     curr_goal = None
     curr_pose = None
     latest_obstacles = []
-    tf_listener = None
+    tf = None
     planner = None
 
     # initialize and enable the robot and the named limb
-    def __init__(self, limb, speed, accuracy, planner):
+    def __init__(self, limb="right", speed=0.3, accuracy=baxter_interface.JOINT_ANGLE_TOLERANCE):
+
+        rospy.init_node("merry")
         # store reference to planner
-        self.planner = planner
+        #self.planner = planner
+
+        rospy.sleep(1)
 
         # Create baxter_interface limb instance
         self._arm = limb
@@ -90,99 +105,7 @@ class Merry(object):
 
         #self.curr_goal = G_HOME
         self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", PointCloud2, self.kinect_cb)
-        #self.tf_listener = tf.TransformListener()
-
-    def shake_hands(self):
-        """
-        Tries to shake the nearest hand possible using the limb instantiated.
-        Loop runs forever; kill with ctrl-c.
-        """
-        if self.plan_and_execute() is "OK":
-            return 0
-        return 1
-
-    def clean_shutdown(self):
-        print("\nExiting example...")
-        if not self._init_state:
-            print("Disabling robot...")
-            self._rs.disable()
-        return True
-
-    def kinect_cb(self, data):
-        """
-        Receives kinect points from the kinect subscriber linked to the publisher stream.
-        :return: kinect points numpy array
-        """
-        height = data.height
-        width = data.width
-        global points
-        points = np.array([], dtype=tuple)
-        curr_index = 0
-        print "above it "
-        #(trans, rot) = self.tf_listener.lookupTransform("right_gripper", "kinect_link", data.header.stamp)
-        # self.tf_listener.fromTranslationRotation(trans, rot)
-        # #if trans and rot:
-        #     t = TransformStamped()
-        #     t.header.stamp = data.header.stamp
-        #     t.header.frame_id = "kinect_link"
-        #     t.transform.translation.x = trans[0]
-        #     t.transform.translation.y = trans[1]
-        #     t.transform.translation.z = trans[2]
-        #     t.transform.rotation.x = rot[0]
-        #     t.transform.rotation.y = rot[1]
-        #     t.transform.rotation.z = rot[2]
-        #     t.transform.rotation.w = rot[3]
-        #     cloud_wrt_gripper = do_transform_cloud(data, transform=t)
-        #     print "got a transformed cloud!!"
-        # print "got here"
-        # print (kinect_wrt_right_gripper)
-        # self.lookup_transform()
-        # trans, rot = self.lookup_transform()
-        # if trans:
-        #     print (trans)
-        #     point_cloud = None
-        #     pc2.read_points(point_cloud)
-        # for x, y, z in pc2.read_points(data, field_names=("x", "y", "z"), skip_nans=True):
-        #     ps = PointStamped()
-        #     ps.header.frame_id = 'kinect/depth/points'
-        #     ps.header.stamp = rospy.get_rostime()
-        #     try:
-        #         self.tf_listener.waitForTransform("kinect/depth/points", "right_gripper", ps.header.stamp,
-        #                                           rospy.Duration(2.0))
-        #         point_wrt_gripper = self.tf_listener.transformPoint("right_gripper", ps)
-        #         curr_dist = math.sqrt(point_wrt_gripper.point.x**2 + point_wrt_gripper.point.y**2)
-        #         print "current distance from kinect to point"
-        #     except tf.Exception as e:
-        #         print e
-        #         print "failed transforming kinect point to right gripper..."
-        #
-        #
-        #     points = np.append(points,  np.array([(x, y, z)], dtype=tuple))
-        #     curr_index += 1
-        # # np.set_printoptions(precision=3)
-        # print(points)
-
-    # def lookup_transform(self, from_frame="kinect_link", to_frame="right_gripper"):
-    #     """"
-    #     :return: a set of points converted from_frame to_frame.
-    #     """
-    #     # rosrun tf tf_echo right_gripper right_hand_camera
-    #     if self.tf_listener.frameExists(to_frame) and self.tf_listener.frameExists(from_frame):
-    #         t = self.tf_listener.getLatestCommonTime(to_frame, from_frame)
-    #         position, quaternion = self.tf_listener.lookupTransform(to_frame, from_frame, t)
-    #         print position, quaternion
-    #     return position, quaternion
-
-    def curr_pose_callback(self):
-        # get the arm side's current pose
-        # use limb from class
-        return Pose()
-
-    def obstacles_callback(self):
-        """
-        :return: a list of obstacles and their locations as point_cloud vectors of points
-        """
-        return []
+        self.tf = tf.TransformListener()
 
     def error_recovery(self, failed_move):
         """
@@ -257,7 +180,7 @@ class Merry(object):
 
     def get_current_goal(self):
         # retrieve current pose from endpoint
-        current_pose = self.limb.endpoint_pose()
+        current_pose = self._limb.endpoint_pose()
         ik_pose = Pose()
         ik_pose.position.x = current_pose['position'].x
         ik_pose.position.y = current_pose['position'].y
@@ -267,6 +190,97 @@ class Merry(object):
         ik_pose.orientation.z = current_pose['orientation'].z
         ik_pose.orientation.w = current_pose['orientation'].w
         return ik_pose
+
+    def clean_shutdown(self):
+        print("\nExiting example...")
+        if not self._init_state:
+            print("Disabling robot...")
+            self._rs.disable()
+        return True
+
+    def kinect_cb(self, data):
+        """
+        Receives kinect points from the kinect subscriber linked to the publisher stream.
+        :return: kinect points numpy array
+        """
+        height = data.height
+        width = data.width
+        global points
+        points = np.array([], dtype=tuple)
+        curr_index = 0
+        print "above it "
+        self.tf.waitForTransform("right_gripper", "kinect_link", rospy.Time(), rospy.Duration(5))
+        trans = False
+        rot = False
+        if self.tf.canTransform("right_gripper", "kinect_link", data.header.stamp):
+            (trans, rot) = self.tf.lookupTransform("right_gripper", "kinect_link", data.header.stamp)
+        else:
+            print "cannot transform frames..."
+        # self.tf_listener.fromTranslationRotation(trans, rot)
+        if trans and rot:
+        #     t = TransformStamped()
+        #     t.header.stamp = data.header.stamp
+        #     t.header.frame_id = "kinect_link"
+        #     t.transform.translation.x = trans[0]
+        #     t.transform.translation.y = trans[1]
+        #     t.transform.translation.z = trans[2]
+        #     t.transform.rotation.x = rot[0]
+        #     t.transform.rotation.y = rot[1]
+        #     t.transform.rotation.z = rot[2]
+        #     t.transform.rotation.w = rot[3]
+        #     cloud_wrt_gripper = do_transform_cloud(data, transform=t)
+            print "got a transformed cloud!!"
+        # print "got here"
+        # print (kinect_wrt_right_gripper)
+        # self.lookup_transform()
+        # trans, rot = self.lookup_transform()
+        # if trans:
+        #     print (trans)
+        #     point_cloud = None
+        #     pc2.read_points(point_cloud)
+        # for x, y, z in pc2.read_points(data, field_names=("x", "y", "z"), skip_nans=True):
+        #     ps = PointStamped()
+        #     ps.header.frame_id = 'kinect/depth/points'
+        #     ps.header.stamp = rospy.get_rostime()
+        #     try:
+        #         self.tf_listener.waitForTransform("kinect/depth/points", "right_gripper", ps.header.stamp,
+        #                                           rospy.Duration(2.0))
+        #         point_wrt_gripper = self.tf_listener.transformPoint("right_gripper", ps)
+        #         curr_dist = math.sqrt(point_wrt_gripper.point.x**2 + point_wrt_gripper.point.y**2)
+        #         print "current distance from kinect to point"
+        #     except tf.Exception as e:
+        #         print e
+        #         print "failed transforming kinect point to right gripper..."
+        #
+        #
+        #     points = np.append(points,  np.array([(x, y, z)], dtype=tuple))
+        #     curr_index += 1
+        # # np.set_printoptions(precision=3)
+        # print(points)
+
+    # def lookup_transform(self, from_frame="kinect_link", to_frame="right_gripper"):
+    #     """"
+    #     :return: a set of points converted from_frame to_frame.
+    #     """
+    #     # rosrun tf tf_echo right_gripper right_hand_camera
+    #     if self.tf_listener.frameExists(to_frame) and self.tf_listener.frameExists(from_frame):
+    #         t = self.tf_listener.getLatestCommonTime(to_frame, from_frame)
+    #         position, quaternion = self.tf_listener.lookupTransform(to_frame, from_frame, t)
+    #         print position, quaternion
+    #     return position, quaternion
+
+    def curr_pose_callback(self):
+        # get the arm side's current pose
+        # use limb from class
+        return Pose()
+
+    def obstacles_callback(self):
+        """
+        :return: a list of obstacles and their locations as point_cloud vectors of points
+        """
+        return []
+
+
 
     def reset(self):
         """"
