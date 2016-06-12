@@ -124,8 +124,8 @@ def ik_request(self, pose):
         return False
     return limb_joints
 
-
-JOINT_NAMES = ["e0", "e1", "s0", "s1", "w0", "w1", "w2"]
+# may need to change this order to make joint names correspond to joints 1-7 in the solver
+JOINT_NAMES = ["s0", "s1", "e0", "e1", "w0", "w1", "w2"]
 
 
 class Merry(object):
@@ -205,6 +205,7 @@ class Merry(object):
                     self._joint_names.append(name)
                 joint_angles[name] = (self.joint_states[name]["position"], self.joint_states[name]["velocity"],
                                       self.joint_states[name]["effort"])
+
         return joint_angles
 
     def get_current_endpoint_pose(self):
@@ -266,7 +267,7 @@ class Merry(object):
     def plan_and_execute(self, point, side="right"):
         """
         Moves to the 3-D goal coordinates that
-        are given as a 3-tuple (x, y, z)
+        are given as a 3-tuple (x, y, z).
         :return: the status of the operation
         """
         # get obstacles
@@ -289,7 +290,9 @@ class Merry(object):
         :param side: the arm side of the robot
         :return: the next pose to move to in a series of APF planning steps
         """
-        return planner.plan(obs, self.get_joint_angles(side), side)
+        joint_angles_dict = self.get_joint_angles(side)
+        joint_angles = [joint_angles_dict[name] for name in JOINT_NAMES]
+        return planner.plan(obs, joint_angles, side)
 
     def move_to_next_angles(self, next_move):
         """
