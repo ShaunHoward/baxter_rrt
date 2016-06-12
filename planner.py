@@ -7,7 +7,7 @@ import scipy
 def calculate_cartesian_jacobian(joint_angles):
     height = 6
     width = 7
-    J0 = np.zeros((height, width))
+    j0 = np.zeros((height, width))
     c1 = np.cos(joint_angles[0])
     c2 = np.cos(joint_angles[1])
     c3 = np.cos(joint_angles[2])
@@ -23,158 +23,158 @@ def calculate_cartesian_jacobian(joint_angles):
     L2 = 0.37082  # may need to change this to 0.36435
     L3 = 0.37429
     L4 = 0.229525
-    J11 = c1 * ((L3 + L4 * c6) * s3 * s4 + L4 * (c4 * c5 * s3 + c3 * c5) * s6) \
+    j11 = c1 * ((L3 + L4 * c6) * s3 * s4 + L4 * (c4 * c5 * s3 + c3 * c5) * s6) \
         + s1 * s2 * (L2 + (c4 * (L3 + L4 * c6)) - (L4 * c5 * s4 * s6)) \
         + c2 * (c3 * (L3 + L4 * c6) * s4 + L4 * (c3 * c4 * c5 - s3 * s5 * s6))
 
-    J12 = c1 * (-1 * c2 * (L2 + c4 * (L3 + L4 * c6) - L4 * c5 * s4 * s6)
+    j12 = c1 * (-1 * c2 * (L2 + c4 * (L3 + L4 * c6) - L4 * c5 * s4 * s6)
         + s2 * (c3 * (L3 + L4 * c6) * s4 + L4 * (c3 * c4 * c5 - s3 * s4) * s6))
 
-    J13 = (L3 + L4 * c6) * (c3 * s1 + c1 * c2 * s3) * s4 \
+    j13 = (L3 + L4 * c6) * (c3 * s1 + c1 * c2 * s3) * s4 \
         + L4 * (c4 * c5 * (c3 * s1 + c1 * c2 * s3) + (c1 * c2 * c3 - s1 * s3) * s5) * s6
 
-    J14 = (L3 + L4 * c6) * (c4 * s1 * s3 + c1 * (-1 * c2 * c3 * c4 + s2 * s4)) \
+    j14 = (L3 + L4 * c6) * (c4 * s1 * s3 + c1 * (-1 * c2 * c3 * c4 + s2 * s4)) \
         + L4 * c5 * (-1 * s1 * s3 * s4 + c1 * (c4 * s2 + c2 * c3 * s4)) * s6
 
-    J15 = L4 * (c5 * (c3 * s1 + c1 * c2 * s3)
+    j15 = L4 * (c5 * (c3 * s1 + c1 * c2 * s3)
         + (-c4 * s1 * s3 + c1 * (c2 * c3 * c4 - s2 * s4)) * s5) * s6
 
-    J16 = L4 * (s1 * (c6 * (c4 * c5 * s3 + c3 * s5) - s3 * s4 * s6)
+    j16 = L4 * (s1 * (c6 * (c4 * c5 * s3 + c3 * s5) - s3 * s4 * s6)
         + c1 * (c6 * (c5 * s2 * s4 + c2 * (-1 * c3 * c4 * c5 + s3 * s5))
         + (c4 * s2 + c2 * c3 * s4) * s6))
 
-    J17 = 0
+    j17 = 0
 
-    J21 = s1 * ((L3 + L4 * c6) * s3 * s4 + L4 * (c4 * c5 * s3 + c3 * s5) * s6) \
+    j21 = s1 * ((L3 + L4 * c6) * s3 * s4 + L4 * (c4 * c5 * s3 + c3 * s5) * s6) \
         - c1 * (s2 * (L2 + c4 * (L3 + L4 * c6) - L4 * c5 * s4 * s6)
         + c2 * (c3 * (L3 + L4 * c6) * s4 + L4 * (c3 * c4 * c5 - s3 * s5) * s6))
 
-    J22 = s1 * (-1 * c2 * (L2 + c4 * (L3 + L4 * c6) - L4 * c5 * s4 * s6) + s2 * (c3 * (L3 + L4 * c6) * s4 + L4 * (c3 * c4 * c5 - s3 * s5) * s6))
+    j22 = s1 * (-1 * c2 * (L2 + c4 * (L3 + L4 * c6) - L4 * c5 * s4 * s6) + s2 * (c3 * (L3 + L4 * c6) * s4 + L4 * (c3 * c4 * c5 - s3 * s5) * s6))
 
-    J23 = -1 * (L3 + L4 * c6) * (c1 * c3 - c2 * s1 * s3) * s4 + L4 * (c2 * s1 * (c4 * c5 * s3 + c3 * s5) + c1 * (-1 * c3 * c4 * c5 + s3 * s5)) * s6
+    j23 = -1 * (L3 + L4 * c6) * (c1 * c3 - c2 * s1 * s3) * s4 + L4 * (c2 * s1 * (c4 * c5 * s3 + c3 * s5) + c1 * (-1 * c3 * c4 * c5 + s3 * s5)) * s6
 
-    J24 = -1 * (L3 + L4 * c6) * (c4 * (c2 * c3 * s1 + c1 * s3) - s1 * s2 * s4) + L4 * c5 * (c4 * s1 * s2 + (c2 * c3 * s1 + c1 * s3) * s4) * s6
+    j24 = -1 * (L3 + L4 * c6) * (c4 * (c2 * c3 * s1 + c1 * s3) - s1 * s2 * s4) + L4 * c5 * (c4 * s1 * s2 + (c2 * c3 * s1 + c1 * s3) * s4) * s6
 
-    J25 = L4 * (c1 * (-1 * c3 * c5 + c4 * s3 * s5) + s1 * (-1 * s2 * s4 * s5 + c2 * (c5 * s3 + c3 * c4 * s5))) * s6
+    j25 = L4 * (c1 * (-1 * c3 * c5 + c4 * s3 * s5) + s1 * (-1 * s2 * s4 * s5 + c2 * (c5 * s3 + c3 * c4 * s5))) * s6
 
-    J26 = L4 * (c6 * (c5 * (-1 * c4 * (c2 * c3 * s1 + c1 * s3) + s1 * s2 * s4) + (-1 * c1 * c3 + c2 * s1 * s3) * s5)
+    j26 = L4 * (c6 * (c5 * (-1 * c4 * (c2 * c3 * s1 + c1 * s3) + s1 * s2 * s4) + (-1 * c1 * c3 + c2 * s1 * s3) * s5)
         + (c4 * s1 * s2 + (c2 * c3 * s1 + c1 * s3) * s4) * s6)
 
-    J27 = 0
+    j27 = 0
 
-    J31 = 0
+    j31 = 0
 
-    J32 = -1 * s2 * (L2 + c4 * (L3 + L4 * c6) - L4 * c5 * s4 * s6) \
+    j32 = -1 * s2 * (L2 + c4 * (L3 + L4 * c6) - L4 * c5 * s4 * s6) \
         + c2 * (L4 * s3 * s5 * s6 - c3 * ((L3 + L4 * c6) * s4 + L4 * c4 * c5 * s6))
 
-    J33 = s2 * ((L3 + L4 * c6) * s3 * s4 + L4 * (c4 * c5 * s3 + c3 * s5) * s6)
+    j33 = s2 * ((L3 + L4 * c6) * s3 * s4 + L4 * (c4 * c5 * s3 + c3 * s5) * s6)
 
-    J34 = -1 * (L3 + L4 * c6) * (c3 * c4 * s2 + c2 * s4) + L4 * c5 * (-1 * c2 * c4 + c3 * s2 * s4) * s6
+    j34 = -1 * (L3 + L4 * c6) * (c3 * c4 * s2 + c2 * s4) + L4 * c5 * (-1 * c2 * c4 + c3 * s2 * s4) * s6
 
-    J35 = L4 * (c5 * s2 * s3 + (c3 * c4 * s2 + c2 * s4) * s5) * s6
+    j35 = L4 * (c5 * s2 * s3 + (c3 * c4 * s2 + c2 * s4) * s5) * s6
 
-    J36 = -1 * L4 * (c6 * (c5 * (c3 * c4 * s2 + c2 * s4) - s2 * s3 * s5) + (c2 * c4 - c3 * s2 * s4) * s6)
+    j36 = -1 * L4 * (c6 * (c5 * (c3 * c4 * s2 + c2 * s4) - s2 * s3 * s5) + (c2 * c4 - c3 * s2 * s4) * s6)
 
-    J37 = 0
+    j37 = 0
 
-    J41 = 0
+    j41 = 0
 
-    J42 = s1
+    j42 = s1
 
-    J43 = -c1 * s2
+    j43 = -c1 * s2
 
-    J44 = c3 * s1 + c1 * c2 * s3
+    j44 = c3 * s1 + c1 * c2 * s3
 
-    J45 = s1 * s3 * s4 - c1 * (c4 * s2 + c2 * c3 * s4)
+    j45 = s1 * s3 * s4 - c1 * (c4 * s2 + c2 * c3 * s4)
 
-    J46 = c5 * (c3 * s1 + c1 * c2 * s3) \
+    j46 = c5 * (c3 * s1 + c1 * c2 * s3) \
         + (-1 * c4 * s1 * s3 + c1 * (c2 * c3 * c4 - s2 * s4)) * s5
 
-    J47 = s1 * (c6 * s3 * s4 + (c4 * c5 * s3 + c3 * s5) * s6) \
+    j47 = s1 * (c6 * s3 * s4 + (c4 * c5 * s3 + c3 * s5) * s6) \
         + c1 * (-1 * c6 * (c4 * s2 + c2 * c3 * s4)
         + (c5 * s2 * s4 + c2 * (-1 * c3 * c4 * c5 + s3 * s5)) * s6)
 
-    J51 = 0
+    j51 = 0
 
-    J52 = c1
+    j52 = c1
 
-    J53 = -s1 * s2
+    j53 = -s1 * s2
 
-    J54 = -1 * c1 * c3 + c2 * s1 * s3
+    j54 = -1 * c1 * c3 + c2 * s1 * s3
 
-    J55 = -1 * c4 * s1 * s2 - (c2 * c3 * s1 + c1 * s3) * s4
+    j55 = -1 * c4 * s1 * s2 - (c2 * c3 * s1 + c1 * s3) * s4
 
-    J56 = c1 * (-1 * c3 * c5 + c4 * s3 * s5) \
+    j56 = c1 * (-1 * c3 * c5 + c4 * s3 * s5) \
         + s1 * (-1 * s2 * s4 * s5 + c2 * (c5 * s3 + c3 * c4 * s5))
 
-    J57 = -1 * c6 * (c4 * s1 * s2 + (c2 * c3 * s1 + c1 * s3) * s4) \
+    j57 = -1 * c6 * (c4 * s1 * s2 + (c2 * c3 * s1 + c1 * s3) * s4) \
         - (c5 * (c4 * (c2 * c3 * s1 + c1 * s3) - s1 * s2 * s4) + (c1 * c3 - c2 * s1 * s3) * s5) * s6
 
-    J61 = 1
+    j61 = 1
 
-    J62 = 0
+    j62 = 0
 
-    J63 = c2
+    j63 = c2
 
-    J64 = s2 * s3
+    j64 = s2 * s3
 
-    J65 = c2 * c4 - c3 * s2 * s4
+    j65 = c2 * c4 - c3 * s2 * s4
 
-    J66 = c5 * s2 * s3 + (c3 * c4 * s2 + c2 * s4) * s5
+    j66 = c5 * s2 * s3 + (c3 * c4 * s2 + c2 * s4) * s5
 
-    J67 = c2 * (c4 * c6 - c5 * s4 * s6) + s2 * (s3 * s5 * s6 - c3 * (c6 * s4 + c4 * c5 * s6))
+    j67 = c2 * (c4 * c6 - c5 * s4 * s6) + s2 * (s3 * s5 * s6 - c3 * (c6 * s4 + c4 * c5 * s6))
 
-    J0[0][0] = J11
-    J0[0][1] = J12
-    J0[0][2] = J13
-    J0[0][3] = J14
-    J0[0][4] = J15
-    J0[0][5] = J16
-    J0[0][6] = J17
+    j0[0][0] = j11
+    j0[0][1] = j12
+    j0[0][2] = j13
+    j0[0][3] = j14
+    j0[0][4] = j15
+    j0[0][5] = j16
+    j0[0][6] = j17
 
-    J0[1][0] = J21
-    J0[1][1] = J22
-    J0[1][2] = J23
-    J0[1][3] = J24
-    J0[1][4] = J25
-    J0[1][5] = J26
-    J0[1][6] = J27
+    j0[1][0] = j21
+    j0[1][1] = j22
+    j0[1][2] = j23
+    j0[1][3] = j24
+    j0[1][4] = j25
+    j0[1][5] = j26
+    j0[1][6] = j27
 
-    J0[2][0] = J31
-    J0[2][1] = J32
-    J0[2][2] = J33
-    J0[2][3] = J34
-    J0[2][4] = J35
-    J0[2][5] = J36
-    J0[2][6] = J37
+    j0[2][0] = j31
+    j0[2][1] = j32
+    j0[2][2] = j33
+    j0[2][3] = j34
+    j0[2][4] = j35
+    j0[2][5] = j36
+    j0[2][6] = j37
 
-    J0[3][0] = J41
-    J0[3][1] = J42
-    J0[3][2] = J43
-    J0[3][3] = J44
-    J0[3][4] = J45
-    J0[3][5] = J46
-    J0[3][6] = J47
+    j0[3][0] = j41
+    j0[3][1] = j42
+    j0[3][2] = j43
+    j0[3][3] = j44
+    j0[3][4] = j45
+    j0[3][5] = j46
+    j0[3][6] = j47
 
-    J0[4][0] = J51
-    J0[4][1] = J52
-    J0[4][2] = J53
-    J0[4][3] = J54
-    J0[4][4] = J55
-    J0[4][5] = J56
-    J0[4][6] = J57
+    j0[4][0] = j51
+    j0[4][1] = j52
+    j0[4][2] = j53
+    j0[4][3] = j54
+    j0[4][4] = j55
+    j0[4][5] = j56
+    j0[4][6] = j57
 
-    J0[5][0] = J61
-    J0[5][1] = J62
-    J0[5][2] = J63
-    J0[5][3] = J64
-    J0[5][4] = J65
-    J0[5][5] = J66
-    J0[5][6] = J67
-    return J0
+    j0[5][0] = j61
+    j0[5][1] = j62
+    j0[5][2] = j63
+    j0[5][3] = j64
+    j0[5][4] = j65
+    j0[5][5] = j66
+    j0[5][6] = j67
+    return j0
 
 
-def plan(obstacles, joint_angles, side, avoid_velocity=0.3):
+def plan(obstacles, joint_angles, joint_velocities, side, avoid_velocity=0.3):
     d_m = 2
     height = 6
     width = 7
@@ -193,8 +193,8 @@ def plan(obstacles, joint_angles, side, avoid_velocity=0.3):
             d0_norm = np.linalg.norm(d0)
             n0 = d0 / d0_norm
             n0_t = n0.transpose()
-            J0 = calculate_cartesian_jacobian(new_joint_angles)
-            J_d0 = np.dot(n0_t, J0)
+            j0 = calculate_cartesian_jacobian(new_joint_angles)
+            j_d0 = np.dot(n0_t, j0)
             I = np.eye(height, width)
 
             a1 = np.zeros((height, width))
@@ -213,9 +213,9 @@ def plan(obstacles, joint_angles, side, avoid_velocity=0.3):
                     else:
                         a2[m][n] = 1
 
-            N_prime_0 = I - np.dot(a2, J_d0.transpose(), J_d0)
-            x_dot = np.array((height, width))
+            N_prime_0 = I - np.dot(a2, j_d0.transpose(), j_d0)
+            x_dot = np.array(joint_velocities)
 
             v0 = avoid_velocity
             x_dot_d0 = a1 * v0
-            q_dot = np.dot(J_d0.transpose(), x_dot_d0) + np.dot(N_prime_0, J0.transpose(), x_dot)
+            q_dot = np.dot(np.linalg.pinv(j_d0), x_dot_d0) + np.dot(N_prime_0, np.linalg.pinv(j0), x_dot)

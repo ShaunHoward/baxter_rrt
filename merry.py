@@ -197,16 +197,23 @@ class Merry(object):
 
     def get_joint_angles(self, side="right"):
         """Gets the joint angle dictionary of the specified arm side."""
-        joint_angles = dict()
-        names = self.joint_states.keys()
-        for name in names:
+        joint_angles = []
+        for name in JOINT_NAMES:
             if side in name:
                 if name not in self._joint_names:
                     self._joint_names.append(name)
-                joint_angles[name] = (self.joint_states[name]["position"], self.joint_states[name]["velocity"],
-                                      self.joint_states[name]["effort"])
-
+                joint_angles.append(self.joint_states[name]["position"])
         return joint_angles
+
+    def get_joint_velocities(self, side="right"):
+        """Gets the joint angle dictionary of the specified arm side."""
+        joint_velocities = []
+        for name in JOINT_NAMES:
+            if side in name:
+                if name not in self._joint_names:
+                    self._joint_names.append(name)
+                joint_velocities.append(self.joint_states[name]["velocity"])
+        return joint_velocities
 
     def get_current_endpoint_pose(self):
         # retrieve current pose from endpoint
@@ -290,9 +297,7 @@ class Merry(object):
         :param side: the arm side of the robot
         :return: the next pose to move to in a series of APF planning steps
         """
-        joint_angles_dict = self.get_joint_angles(side)
-        joint_angles = [joint_angles_dict[name] for name in JOINT_NAMES]
-        return planner.plan(obs, joint_angles, side)
+        return planner.plan(obs, self.get_joint_angles(side), self.get_joint_velocities(side), side)
 
     def move_to_next_angles(self, next_move):
         """
