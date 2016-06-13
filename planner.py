@@ -7,6 +7,7 @@ import scipy
 def calculate_cartesian_jacobian(joint_angles):
     height = 6
     width = 7
+
     j0 = np.zeros((height, width))
     c1 = np.cos(joint_angles[0])
     c2 = np.cos(joint_angles[1])
@@ -14,15 +15,18 @@ def calculate_cartesian_jacobian(joint_angles):
     c4 = np.cos(joint_angles[3])
     c5 = np.cos(joint_angles[4])
     c6 = np.cos(joint_angles[5])
+
     s1 = np.sin(joint_angles[0])
     s2 = np.sin(joint_angles[1])
     s3 = np.sin(joint_angles[2])
     s4 = np.sin(joint_angles[3])
     s5 = np.sin(joint_angles[4])
     s6 = np.sin(joint_angles[5])
+
     L2 = 0.37082  # may need to change this to 0.36435
     L3 = 0.37429
     L4 = 0.229525
+
     j11 = c1 * ((L3 + L4 * c6) * s3 * s4 + L4 * (c4 * c5 * s3 + c3 * c5) * s6) \
         + s1 * s2 * (L2 + (c4 * (L3 + L4 * c6)) - (L4 * c5 * s4 * s6)) \
         + c2 * (c3 * (L3 + L4 * c6) * s4 + L4 * (c3 * c4 * c5 - s3 * s5 * s6))
@@ -174,28 +178,36 @@ def calculate_cartesian_jacobian(joint_angles):
     return j0
 
 
-def plan(obstacles, joint_angles, joint_velocities, side, avoid_velocity=0.3):
+def plan(obstacles, end_effector_velocities, joint_angles, side, avoid_velocity=0.3):
     d_m = 2
     height = 6
     width = 7
-    # unpack joint angles
-    # names = ["".join([side, x]) for x in ["e0", "e1", "s0", "s1", "w0", "w1", "w2"]]
-    new_joint_angles = dict()
-    for name in joint_angles.keys():
-        if side in name:
-            new_joint_angles[name.split("")[1]] = joint_angles[name]["position"]
+    v0 = avoid_velocity
+
+    goal_joint_velocities = np.zeros((len(joint_angles)))
+    q_dot = np.zeros((len(joint_angles)))
+
+    x_dot = np.array([end_effector_velocities.linear.x,
+                      end_effector_velocities.linear.y,
+                      end_effector_velocities.linear.z,
+                      end_effector_velocities.angular.x,
+                      end_effector_velocities.angular.y,
+                      end_effector_velocities.angular.z])
+
     if len(obstacles) == 0:
+        j0 = calculate_cartesian_jacobian(joint_angles)
         # do simple planning, tracking is more precise
-        pass
+        q_dot = np.dot(np.linalg.pinv(j0), x_dot)
     else:
-        for ob in obstacles:
-            d0 = np.array([ob.x, ob.y, ob.z])
+        for ob_critical_pt, ob_dist in obstacles:
+            if ob_critical_pt is None:
+                continue
+            d0 = np.array([ob_critical_pt.x, ob_critical_pt.y, ob_critical_pt.z])
             d0_norm = np.linalg.norm(d0)
             n0 = d0 / d0_norm
             n0_t = n0.transpose()
-            j0 = calculate_cartesian_jacobian(new_joint_angles)
+            j0 = calculate_cartesian_jacobian(joint_angles)
             j_d0 = np.dot(n0_t, j0)
-            I = np.eye(height, width)
 
             a1 = np.zeros((height, width))
             for m in range(height):
@@ -213,9 +225,13 @@ def plan(obstacles, joint_angles, joint_velocities, side, avoid_velocity=0.3):
                     else:
                         a2[m][n] = 1
 
-            N_prime_0 = I - np.dot(a2, j_d0.transpose(), j_d0)
-            x_dot = np.array(joint_velocities)
-
-            v0 = avoid_velocity
+            I = np.eye(height, width)
+            N_prime_0 = I - np.dot(a2, np.linalg.pinv(j_d0), j_d0)
             x_dot_d0 = a1 * v0
             q_dot = np.dot(np.linalg.pinv(j_d0), x_dot_d0) + np.dot(N_prime_0, np.linalg.pinv(j0), x_dot)
+            break
+
+    if q_dot is not None and len(q_dot) == len(joint_angles):
+        print(q_dot)
+        goal_joint_velocities = q_dot
+    return goal_joint_velocities

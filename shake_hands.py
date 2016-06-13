@@ -3,13 +3,11 @@
 __author__ = 'shaun howard'
 
 import argparse
+import baxter_interface
 import rospy
 import sys
 
-import baxter_interface
-
 from merry import Merry
-from planner import PotentialFieldPlanner
 
 
 def get_args():
@@ -21,7 +19,7 @@ def get_args():
                                      fields.""")
     required = parser.add_argument_group('required arguments')
     required.add_argument(
-        '-l', '--limb', required=True, choices=['left', 'right'],
+        '-l', '--limb', required=False, choices=['left', 'right'], default='right',
         help='limb to record/playback waypoints'
     )
     parser.add_argument(
@@ -36,18 +34,24 @@ def get_args():
     return parser.parse_args(rospy.myargv()[1:])
 
 
+def shake_hands(merry):
+    """
+    Tries to shake the nearest hand possible using the limb instantiated.
+    Loop runs forever; kill with ctrl-c.
+    """
+    if merry.plan_and_execute_end_effector("right") is "OK":
+        return 0
+    return 1
+
+
 def run_robot(args):
     print("Initializing node... ")
-    rospy.init_node("merry_pf %s" % (args.limb,))
-    merry = Merry(args.limb, args.speed, args.accuracy, PotentialFieldPlanner())
+    rospy.init_node("merry")
+    merry = Merry(args.limb, args.speed, args.accuracy)
     rospy.on_shutdown(merry.clean_shutdown)
-    status = merry.shake_hands()
+    status = shake_hands(merry)
     sys.exit(status)
 
 
-def robot_runner():
-    run_robot(get_args())
-
-
 if __name__ == '__main__':
-    robot_runner()
+    run_robot(get_args())
