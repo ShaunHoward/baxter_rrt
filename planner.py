@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import random
+import rospy
 import scipy
 
 
@@ -178,7 +179,22 @@ def calculate_cartesian_jacobian(joint_angles):
     return j0
 
 
-def plan(obstacles, end_effector_velocities, joint_angles, side, avoid_velocity=0.3):
+OK = "OK"
+ERROR = "ERROR"
+
+
+def plan(goal, obstacles, end_effector_velocities, joint_angles, side, avoid_velocity=0.3):
+    # validate parameters
+    params = [obstacles, end_effector_velocities, joint_angles, side, avoid_velocity]
+    status = OK
+    for param in params:
+        if param is None:
+            status = ERROR
+            break
+    if status == ERROR:
+        rospy.logerr("Could not develop plan for Merry. No obstacles were found or a parameter was empty.")
+        return status, None
+
     d_m = 2
     height = 6
     width = 7
@@ -194,11 +210,12 @@ def plan(obstacles, end_effector_velocities, joint_angles, side, avoid_velocity=
                       end_effector_velocities.angular.y,
                       end_effector_velocities.angular.z])
 
-    if len(obstacles) == 0:
-        j0 = calculate_cartesian_jacobian(joint_angles)
+    if len(obstacles) == 0 and goal is not None:
         # do simple planning, tracking is more precise
+        j0 = calculate_cartesian_jacobian(joint_angles)
         q_dot = np.dot(np.linalg.pinv(j0), x_dot)
     else:
+        # otherwise, do more complicated planning
         for ob_critical_pt, ob_dist in obstacles:
             if ob_critical_pt is None:
                 continue
@@ -231,7 +248,6 @@ def plan(obstacles, end_effector_velocities, joint_angles, side, avoid_velocity=
             q_dot = np.dot(np.linalg.pinv(j_d0), x_dot_d0) + np.dot(N_prime_0, np.linalg.pinv(j0), x_dot)
             break
 
-    if q_dot is not None and len(q_dot) == len(joint_angles):
-        print(q_dot)
+    if q_dot is not None and len(q_dot) == len(joint_angles) != 0:
         goal_joint_velocities = q_dot
-    return goal_joint_velocities
+    return status, goal_joint_velocities

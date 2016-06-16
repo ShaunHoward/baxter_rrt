@@ -1,4 +1,3 @@
-__author__ = 'shaun howard'
 import baxter_interface
 import cv2
 import math
@@ -28,10 +27,13 @@ from baxter_core_msgs.srv import (
     SolvePositionIKRequest,
 )
 
+
 from std_msgs.msg import (
     Header,
     Empty,
 )
+
+__author__ = 'shaun howard'
 
 
 def lookup_transform(tf_, from_frame="kinect_link", to_frame="right_gripper"):
@@ -100,6 +102,7 @@ JOINT_NAMES = ["s0", "s1", "e0", "e1", "w0", "w1", "w2"]
 NUM_JOINTS = len(JOINT_NAMES)
 MAX_TRIALS = 10
 
+
 class Merry(object):
 
     closest_points = []
@@ -150,9 +153,6 @@ class Merry(object):
         velocities = data.velocity
         efforts = data.effort
         for i in range(len(JOINT_NAMES)):
-            print positions[i]
-            print velocities[i]
-            print efforts[i]
             self.joint_states[names[i]] = dict()
             self.joint_states[names[i]]["position"] = positions[i]
             self.joint_states[names[i]]["velocity"] = velocities[i]
@@ -184,7 +184,6 @@ class Merry(object):
         """Gets the joint angle dictionary of the specified arm side."""
         joint_velocities = []
         for name in JOINT_NAMES:
-            print (self.joint_states)
             if side in name:
                 if name not in self._joint_names:
                     self._joint_names.append(name)
@@ -259,7 +258,7 @@ class Merry(object):
             if closest_point is None or dist < closest_dist:
                 closest_point = p
                 closest_dist = dist
-        return [(closest_point, closest_dist)]
+        return None if not closest_point and closest_dist else [(closest_point, closest_dist)]
 
     def plan_and_execute_end_effector(self, side="right"):
         """
@@ -272,18 +271,20 @@ class Merry(object):
             # get obstacles
             obstacles = self.get_critical_points_of_obstacles()
             # generate the goal joint velocities
-            goal_velocities = self.generate_goal_velocities(obstacles, side)
-            # set the goal joint velocities to reach the desired goal
-            status = self.set_joint_velocities(goal_velocities)
-            # check if the status is successful
-            if status is not OK:
-                # try to revisit move with perturbation
-                rospy.logerr("unable to compute goal joint velocities...")
-                # status = self.error_recovery(next_joint_angles, point)
-                trial += 1
-                if trial >= MAX_TRIALS:
-                    rospy.loginfo("cannot find solution after max trials met...exiting...")
-                    break
+            status, goal_velocities = self.generate_goal_velocities(obstacles, side)
+            if status == OK:
+                # set the goal joint velocities to reach the desired goal
+                status = self.set_joint_velocities(goal_velocities)
+                # check if the status is successful
+                if status is not OK:
+                    # try to revisit move with perturbation
+                    rospy.logerr("unable to compute goal joint velocities...")
+                    # status = self.error_recovery(next_joint_angles, point)
+                    trial += 1
+                    if trial >= MAX_TRIALS:
+                        rospy.loginfo("cannot find solution after max trials met...exiting...")
+                        break
+            rospy.sle
         return status
 
     def generate_goal_velocities(self, obs, side="right"):
@@ -292,7 +293,7 @@ class Merry(object):
         by means of the current robot joint states and the desired goal point.
         :param obs: the obstacles for the planner to avoid
         :param side: the arm side of the robot
-        :return: the next pose to move to in a series of APF planning steps
+        :return: the status of the op and the goal velocities for the arm joints
         """
         return planner.plan(obs, self.get_current_endpoint_velocities(), self.get_joint_angles(side), side)
 
