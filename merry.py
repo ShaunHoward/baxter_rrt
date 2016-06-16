@@ -12,6 +12,11 @@ from sensor_msgs import point_cloud2 as pc2
 from sensor_msgs.msg import Image, JointState, PointCloud, PointCloud2
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 
+from sklearn.cluster import KMeans
+from sklearn.datasets import load_digits
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import scale
+
 from geometry_msgs.msg import (
     PoseStamped,
     Pose,
@@ -103,6 +108,8 @@ NUM_JOINTS = len(JOINT_NAMES)
 MAX_TRIALS = 10
 
 
+
+
 class Merry(object):
 
     closest_points = []
@@ -117,7 +124,6 @@ class Merry(object):
         # Create baxter_interface limb instance
         self._arm = limb
         self._limb = baxter_interface.Limb(self._arm)
-        self._joint_names = []
 
         self.joint_states = {name: dict() for name in JOINT_NAMES}
 
@@ -145,14 +151,30 @@ class Merry(object):
         self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", PointCloud2, self.kinect_cb)
         self.tf = tf.TransformListener()
 
+        self.kmeans = self.get_kmeans_instance()
+
         # self.bridge = CvBridge()
+
+    def get_kmeans_instance(self):
+        # seed numpy with the answer to the universe
+        np.random.seed(42)
+        while len(self.closest_points) == 0:
+            # busy wait until kinect update is received
+            pass
+        # copy points so they're not modified while in use
+        curr_points = [x for x in self.closest_points]
+        data = scale(curr_points)
+        reduced_data = PCA(n_components=1).fit_transform(data)
+        kmeans = KMeans(init='k-means++', n_clusters=len(data), n_init=10)
+        kmeans.fit(reduced_data)
+        return kmeans
 
     def joint_state_cb(self, data):
         names = data.name
         positions = data.position
         velocities = data.velocity
         efforts = data.effort
-        for i in range(len(JOINT_NAMES)):
+        for i in range(len(names)):
             self.joint_states[names[i]] = dict()
             self.joint_states[names[i]]["position"] = positions[i]
             self.joint_states[names[i]]["velocity"] = velocities[i]
@@ -174,22 +196,14 @@ class Merry(object):
         """Gets the joint angle dictionary of the specified arm side."""
         joint_angles = []
         for name in JOINT_NAMES:
-            if side in name:
-                if name not in self._joint_names:
-                    self._joint_names.append(name)
-                joint_angles.append(self.joint_states[name]["position"])
+            joint_angles.append(self.joint_states[name]["position"])
         return joint_angles
 
     def get_joint_velocities(self, side="right"):
         """Gets the joint angle dictionary of the specified arm side."""
         joint_velocities = []
         for name in JOINT_NAMES:
-            if side in name:
-                if name not in self._joint_names:
-                    self._joint_names.append(name)
-                joint_velocities.append(self.joint_states[name]["velocity"])
-        if len(joint_velocities) != NUM_JOINTS:
-            joint_velocities = [0] * 7
+            joint_velocities.append(self.joint_states[name]["velocity"])
         return np.array(joint_velocities)
 
     def get_current_endpoint_pose(self):
@@ -227,7 +241,8 @@ class Merry(object):
         ik_pose.orientation.y = current_pose['orientation'].y
         ik_pose.orientation.z = current_pose['orientation'].z
         ik_pose.orientation.w = current_pose['orientation'].w
-        joint_angles = ik_request(ik_pose)
+        # joint_angles = ik_request(ik_pose)
+        joint_angles = []
         return joint_angles
 
     def approach(self, points):
@@ -252,17 +267,22 @@ class Merry(object):
         """
         closest_point = None
         closest_dist = 15
-        # run obstacle detection on the points closest to the robot
+        #TODO: add/test kmeans!!
+        prediction = self.kmeans.predict(self.closest_points)
+        print(prediction)
+        # run obstacle detection (K-means clustering) on the points closest to the robot
         for p in self.closest_points:
             dist = math.sqrt(p.x**2 + p.y**2 + p.z**2)
             if closest_point is None or dist < closest_dist:
                 closest_point = p
                 closest_dist = dist
-        return None if not closest_point and closest_dist else [(closest_point, closest_dist)]
+        return None if not (closest_point and closest_dist) else [(closest_point, closest_dist)]
 
-    def plan_and_execute_end_effector(self, side="right"):
+    def plan_and_execute_end_effector(self, goal, side="right"):
         """
-        Moves the side end effector to the closest obstacle.
+        Moves the side end effector to the provided goal position.
+        :param goal: the goal 3-d point with x, y, z fields
+        :param side: the side of the robot to plan for, left or right
         :return: the status of the operation
         """
         trial = 0
@@ -271,7 +291,7 @@ class Merry(object):
             # get obstacles
             obstacles = self.get_critical_points_of_obstacles()
             # generate the goal joint velocities
-            status, goal_velocities = self.generate_goal_velocities(obstacles, side)
+            status, goal_velocities = self.generate_goal_velocities(goal, obstacles, side)
             if status == OK:
                 # set the goal joint velocities to reach the desired goal
                 status = self.set_joint_velocities(goal_velocities)
@@ -284,22 +304,25 @@ class Merry(object):
                     if trial >= MAX_TRIALS:
                         rospy.loginfo("cannot find solution after max trials met...exiting...")
                         break
-            rospy.sle
+            rospy.sleep(2)
         return status
 
-    def generate_goal_velocities(self, obs, side="right"):
+    def generate_goal_velocities(self, goal, obs, side="right"):
         """
         Generates the next move in a series of moves using an APF planning method
         by means of the current robot joint states and the desired goal point.
+        :param goal: the goal 3-d point with x, y, z fields
         :param obs: the obstacles for the planner to avoid
         :param side: the arm side of the robot
         :return: the status of the op and the goal velocities for the arm joints
         """
-        return planner.plan(obs, self.get_current_endpoint_velocities(), self.get_joint_angles(side), side)
+        return planner.plan(goal, obs, self.get_current_endpoint_velocities(), self.get_joint_angles(side), side)
 
     def set_joint_velocities(self, joint_velocities):
         """
         Moves the Baxter robot end effector to the given dict of joint velocities keyed by joint name.
+        :param joint_velocities:  a list of join velocities containing at least those key-value pairs of joints
+         in JOINT_NAMES
         :return: a status about the move execution; in success, "OK", and in error, "ERROR".
         """
         status = "OK"
@@ -392,7 +415,6 @@ class Merry(object):
 
 
 if __name__ == '__main__':
-    goal = None
     merry = Merry()
     while not rospy.is_shutdown():
         #print "got in main loop"

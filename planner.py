@@ -185,7 +185,7 @@ ERROR = "ERROR"
 
 def plan(goal, obstacles, end_effector_velocities, joint_angles, side, avoid_velocity=0.3):
     # validate parameters
-    params = [obstacles, end_effector_velocities, joint_angles, side, avoid_velocity]
+    params = [goal, obstacles, end_effector_velocities, joint_angles, side, avoid_velocity]
     status = OK
     for param in params:
         if param is None:
@@ -210,7 +210,7 @@ def plan(goal, obstacles, end_effector_velocities, joint_angles, side, avoid_vel
                       end_effector_velocities.angular.y,
                       end_effector_velocities.angular.z])
 
-    if len(obstacles) == 0 and goal is not None:
+    if len(obstacles) == 0:
         # do simple planning, tracking is more precise
         j0 = calculate_cartesian_jacobian(joint_angles)
         q_dot = np.dot(np.linalg.pinv(j0), x_dot)
