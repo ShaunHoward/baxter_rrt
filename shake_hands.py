@@ -39,7 +39,8 @@ def shake_hands(merry):
     Tries to shake the nearest hand possible using the limb instantiated.
     Loop runs forever; kill with ctrl-c.
     """
-    if merry.plan_and_execute_end_effector("right") is "OK":
+    if merry.approach() is "OK":
+    #if merry.plan_and_execute_end_effector("right") is "OK":
         return 0
     return 1
 

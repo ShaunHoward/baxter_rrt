@@ -24,6 +24,23 @@ Merry the robot with potential fields for joint control for EECS 499 Research Pr
 * -- cd libfreenect/wrappers/python
 * -- python setup.py build_ext --inplace
 
+# install MoveIt!
+* sudo add-apt-repository ppa:libccd-debs/ppa
+* sudo apt-get update
+* sudo apt-get install libccd-dev
+* sudo apt-get install ros-indigo-moveit-full
+* cd ~/ros_ws/src
+* git clone https://github.com/ros-planning/moveit_robots.git
+
+# run baxter:
+* In all terminals with baxter nodes running:
+* cd ~/projects/ros_ws/
+* ./baxter.sh
+
+* For gazebo simulator: roslaunch cwru_baxter_sim baxter_world.launch
+* For motion planning: roslaunch baxter_moveit_config move_group.launch
+* For visualization: rviz rviz
+
 # Extract raw data from Kinect
 * http://answers.ros.org/question/9803/extracting-raw-data-from-kinect/
 

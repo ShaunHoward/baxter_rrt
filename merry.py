@@ -6,6 +6,7 @@ import rospy
 import struct
 import tf
 import planner
+import random
 
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs import point_cloud2 as pc2
@@ -32,11 +33,13 @@ from baxter_core_msgs.srv import (
     SolvePositionIKRequest,
 )
 
+from baxter_pykdl import baxter_kinematics
 
 from std_msgs.msg import (
     Header,
     Empty,
 )
+
 
 __author__ = 'shaun howard'
 
@@ -62,6 +65,8 @@ def transform_pcl2(tf_, target_frame, source_frame, point_cloud, duration=3):
     # returns a list of transformed points
     tf_.waitForTransform(target_frame, source_frame, rospy.Time.now(), rospy.Duration(duration))
     mat44 = as_matrix2(tf_, target_frame, source_frame)
+    if not isinstance(point_cloud[0], tuple) and not isinstance(point_cloud[0], list):
+        point_cloud = [(p.x, p.y, p.z) for p in point_cloud]
     return [Point(*(tuple(np.dot(mat44, np.array([p[0], p[1], p[2], 1.0])))[:3])) for p in point_cloud]
 
 
@@ -103,11 +108,20 @@ OK = "OK"
 ERROR = "ERROR"
 
 # may need to change this order to make joint names correspond to joints 1-7 in the solver
-JOINT_NAMES = ["s0", "s1", "e0", "e1", "w0", "w1", "w2"]
+JOINT_NAMES = ["right_s0", "right_s1", "right_e0", "right_e1", "right_w0", "right_w1", "right_w2",
+               "left_s0", "left_s1", "left_e0", "left_e1", "left_w0", "left_w1", "left_w2"]
 NUM_JOINTS = len(JOINT_NAMES)
 MAX_TRIALS = 10
 
 
+def get_angles_dict(angles_list, side):
+    i = 0
+    angles_dict = dict()
+    for name in JOINT_NAMES:
+        if side in name:
+            angles_dict[name] = angles_list[i]
+            i += 1
+    return angles_dict
 
 
 class Merry(object):
@@ -125,7 +139,7 @@ class Merry(object):
         self._arm = limb
         self._limb = baxter_interface.Limb(self._arm)
 
-        self.joint_states = {name: dict() for name in JOINT_NAMES}
+        self.joint_states = dict()
 
         # Parameters which will describe joint position moves
         self._speed = speed
@@ -151,7 +165,11 @@ class Merry(object):
         self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", PointCloud2, self.kinect_cb)
         self.tf = tf.TransformListener()
 
-        self.kmeans = self.get_kmeans_instance()
+        self.kmeans = None
+
+        self.bkin = baxter_kinematics(limb)
+
+        rospy.on_shutdown(self.clean_shutdown)
 
         # self.bridge = CvBridge()
 
@@ -180,7 +198,7 @@ class Merry(object):
             self.joint_states[names[i]]["velocity"] = velocities[i]
             self.joint_states[names[i]]["effort"] = efforts[i]
 
-    def kinect_cb(self, data, source="kinect_link", dest="right_gripper", max_dist=2):
+    def kinect_cb(self, data, source="kinect_link", dest="right_gripper", max_dist=2, min_height=1):
         """
         Receives kinect points from the kinect subscriber linked to the publisher stream.
         :return: kinect points numpy array
@@ -188,7 +206,8 @@ class Merry(object):
         points = [p for p in pc2.read_points(data, skip_nans=True, field_names=("x", "y", "z"))]
         transformed_points = transform_pcl2(self.tf, dest, source, points, 3)
         print "got a transformed cloud!!"
-        self.closest_points = [p for p in transformed_points if math.sqrt(p.x**2 + p.y**2 + p.z**2) < max_dist]
+        self.closest_points = [p for p in transformed_points if math.sqrt(p.x**2 + p.y**2 + p.z**2) < max_dist \
+                               and p.z > min_height]
         print "found closest points"
         print "there are this many close points: " + str(len(self.closest_points))
 
@@ -203,7 +222,8 @@ class Merry(object):
         """Gets the joint angle dictionary of the specified arm side."""
         joint_velocities = []
         for name in JOINT_NAMES:
-            joint_velocities.append(self.joint_states[name]["velocity"])
+            if side in name:
+                joint_velocities.append(self.joint_states[name]["velocity"])
         return np.array(joint_velocities)
 
     def get_current_endpoint_pose(self):
@@ -230,7 +250,7 @@ class Merry(object):
         vel_msg.angular.z = current_vels['angular'].z
         return vel_msg
 
-    def generate_goal_angles(self, dest_point):
+    def generate_goal_pose(self, dest_point):
         """Uses inverse kinematics to generate joint angles at destination point."""
         ik_pose = Pose()
         ik_pose.position.x = dest_point[0]
@@ -241,23 +261,16 @@ class Merry(object):
         ik_pose.orientation.y = current_pose['orientation'].y
         ik_pose.orientation.z = current_pose['orientation'].z
         ik_pose.orientation.w = current_pose['orientation'].w
-        # joint_angles = ik_request(ik_pose)
-        joint_angles = []
-        return joint_angles
+        return ik_pose
 
-    def approach(self, points):
-        """
-        Attempts to successfully visit one of the provided points in fifo order. Will try another point if one fails.
-        :param points: possible 3d points in the frame of the chosen (left or right) gripper to move to
-        :return: status of attempt to approach at least one of the specified points based on the success of the planning
-        """
-        status = ERROR
-        # approach the closest point then backups if needed
-        for p in points:
-            status = self.plan_and_execute_end_effector(p)
-            if status is OK:
-                break
-        return status
+    def transform_points(self, points, source="right_gripper", dest="base"):
+            """
+            Converts a given list of points into the specified dest. frame from the specified source frame.
+            :return: points numpy array
+            """
+            transformed_points = transform_pcl2(self.tf, dest, source, points, 3)
+            rospy.loginfo(''.join(["got a transformed cloud w/ mapping from ", source, " to ", dest, "!!"]))
+            return transformed_points
 
     def get_critical_points_of_obstacles(self):
         """
@@ -267,16 +280,70 @@ class Merry(object):
         """
         closest_point = None
         closest_dist = 15
-        #TODO: add/test kmeans!!
-        prediction = self.kmeans.predict(self.closest_points)
-        print(prediction)
+        # TODO: add/test kmeans!!
+        #        prediction = self.kmeans.predict(self.closest_points)
+        #        print(prediction)
         # run obstacle detection (K-means clustering) on the points closest to the robot
         for p in self.closest_points:
-            dist = math.sqrt(p.x**2 + p.y**2 + p.z**2)
+            dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)
             if closest_point is None or dist < closest_dist:
                 closest_point = p
                 closest_dist = dist
         return None if not (closest_point and closest_dist) else [(closest_point, closest_dist)]
+
+    def approach(self, goal_points=[]):
+        """
+        Attempts to successfully visit all of the provided points in fifo order. Will try next point upon success or failure.
+        :param goal_points: 3d goal points in the frame of the chosen (left or right) gripper to move to with x, y, z
+        :return: status of attempt to approach at least one of the specified points based on the success of the planning
+        """
+        status = ERROR
+        # approach the goal points
+        # for goal in goal_points:
+        goal_angles = None
+        mode = "IK"
+        while True:
+            obstacles = self.get_critical_points_of_obstacles()
+            if mode is "IK":
+                #if obstacles is not None:
+                rospy.loginfo("going to generate goal angles...")
+                points =[Point(random.uniform(-2.2, 2.2), random.uniform(-2.2, 2.2), random.uniform(-2.2, 2.2))]  # [obstacles[0][0]]
+                rospy.sleep(1)
+                # transform from the current gripper to the base frame for solving
+                #ik_trans = self.transform_points(points, self._arm + "_gripper", "base")
+                goal_ob = points[0]#ik_trans[0]
+                goal = self.generate_goal_pose((goal_ob.x, goal_ob.y, goal_ob.z))
+                # do inverse kinematics for cart pose to joint angles, then convert joint angles to joint velocities
+                goal_angles = self.bkin.inverse_kinematics((goal.position.x,
+                                                            goal.position.y,
+                                                            goal.position.z),
+                                                           (goal.orientation.x,
+                                                            goal.orientation.y,
+                                                            goal.orientation.z,
+                                                            goal.orientation.w))
+            if goal_angles is not None:
+                rospy.loginfo("got joint angles to execute!")
+                rospy.loginfo("goal angles: " + str(goal_angles))
+                status = OK
+                joint_positions = get_angles_dict(goal_angles, self._arm)
+                print joint_positions
+                # set the goal joint angles to reach the desired goal
+                status = self.move_to_joint_positions(joint_positions)
+                if status is ERROR:
+                    rospy.logerr("could not set joint positions for ik solver...")
+            else:
+                #rospy.logerr("didn't get joint angles soln...")
+                status = ERROR
+                # if status == OK:
+                # status = self.plan_and_execute_end_effector(goal)
+            # elif mode is "IKAvoid":
+            #     rospy.loginfo("this method of solving is not yet implemented...")
+            #     pass
+            # else:
+            #     status = ERROR
+            #     rospy.logerr("mode for operation not set.. aborting.")
+            #     break
+        return status
 
     def plan_and_execute_end_effector(self, goal, side="right"):
         """
@@ -292,6 +359,7 @@ class Merry(object):
             obstacles = self.get_critical_points_of_obstacles()
             # generate the goal joint velocities
             status, goal_velocities = self.generate_goal_velocities(goal, obstacles, side)
+
             if status == OK:
                 # set the goal joint velocities to reach the desired goal
                 status = self.set_joint_velocities(goal_velocities)
@@ -307,16 +375,16 @@ class Merry(object):
             rospy.sleep(2)
         return status
 
-    def generate_goal_velocities(self, goal, obs, side="right"):
+    def generate_goal_velocities(self, goal_point, obs, side="right"):
         """
         Generates the next move in a series of moves using an APF planning method
         by means of the current robot joint states and the desired goal point.
-        :param goal: the goal 3-d point with x, y, z fields
+        :param goal_point: the goal 3-d point with x, y, z fields
         :param obs: the obstacles for the planner to avoid
         :param side: the arm side of the robot
         :return: the status of the op and the goal velocities for the arm joints
         """
-        return planner.plan(goal, obs, self.get_current_endpoint_velocities(), self.get_joint_angles(side), side)
+        return planner.plan(self.bkin, self.generate_goal_pose(goal_point), obs, self.get_current_endpoint_velocities(), self.get_joint_angles(side), side)
 
     def set_joint_velocities(self, joint_velocities):
         """
@@ -348,7 +416,7 @@ class Merry(object):
         self._limb.set_joint_position_speed(0.3)
         return status
 
-    def set_joint_positions(self, joint_positions):
+    def move_to_joint_positions(self, joint_positions):
         """
         Moves the Baxter robot end effector to the given dict of joint velocities keyed by joint name.
         :return: a status about the move execution; in success, "OK", and in error, "ERROR".
@@ -361,7 +429,7 @@ class Merry(object):
 
         # execute next move
         if not rospy.is_shutdown() and joint_positions is not None:
-            self._limb.set_joint_positions(joint_positions)
+            self._limb.move_to_joint_positions(joint_positions)
         else:
             rospy.logerr("Joint angles are unavailable at the moment. \
                           Will try to get goal angles soon, but staying put for now.")

@@ -3,6 +3,7 @@ import numpy as np
 import random
 import rospy
 import scipy
+from baxter_pykdl import baxter_kinematics as bkin
 
 
 def calculate_cartesian_jacobian(joint_angles):
@@ -183,9 +184,30 @@ OK = "OK"
 ERROR = "ERROR"
 
 
-def plan(goal, obstacles, end_effector_velocities, joint_angles, side, avoid_velocity=0.3):
+def plan(baxter_kinematics, goal, obstacles, end_effector_pose, joint_angles, avoid_velocity=0.3):
+    """
+    Plans using Jacobian-based obstacle avoidance.
+    :param baxter_kinematics: the baxter_kinematics instance to provide cached solvers, etc for the current arm
+    :param goal: the goal pose with position.x, y, z and orientation.x, y, z, w
+    :param obstacles: the obstacles and their distances from the robot as pairs in an iterable
+    :param end_effector_pose: the Twist message of current endpoint velocities with linear.x, y, z
+     and angular.x, y, z
+    :param joint_angles: a list of the joint angles for the robot
+    :param avoid_velocity: the velocity in range [0 - 1] to avoid obstacles with
+    :return: the status of the planner outcome and the joint velocities to reach the goal
+    """
+
+    # do inverse kinematics for cart pose to joint angles, then convert joint angles to joint velocities
+    baxter_kinematics.inverse_kinematics((goal.position.x,
+                                          goal.position.y,
+                                          goal.position.z),
+                                         (goal.orientation.x,
+                                          goal.orientation.y,
+                                          goal.orientation.z,
+                                          goal.orientation.w))
+
     # validate parameters
-    params = [goal, obstacles, end_effector_velocities, joint_angles, side, avoid_velocity]
+    params = [goal, obstacles, end_effector_pose, joint_angles, side, avoid_velocity]
     status = OK
     for param in params:
         if param is None:
@@ -203,12 +225,12 @@ def plan(goal, obstacles, end_effector_velocities, joint_angles, side, avoid_vel
     goal_joint_velocities = np.zeros((len(joint_angles)))
     q_dot = np.zeros((len(joint_angles)))
 
-    x_dot = np.array([end_effector_velocities.linear.x,
-                      end_effector_velocities.linear.y,
-                      end_effector_velocities.linear.z,
-                      end_effector_velocities.angular.x,
-                      end_effector_velocities.angular.y,
-                      end_effector_velocities.angular.z])
+    x_dot = np.array([])#np.array([end_effector_pose.linear.x,
+                      # end_effector_pose.linear.y,
+                      # end_effector_pose.linear.z,
+                      # end_effector_pose.angular.x,
+                      # end_effector_pose.angular.y,
+                      # end_effector_pose.angular.z])
 
     if len(obstacles) == 0:
         # do simple planning, tracking is more precise
