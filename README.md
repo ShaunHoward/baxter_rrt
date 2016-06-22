@@ -28,9 +28,131 @@ Merry the robot with potential fields for joint control for EECS 499 Research Pr
 * sudo add-apt-repository ppa:libccd-debs/ppa
 * sudo apt-get update
 * sudo apt-get install libccd-dev
+    cd ~
+    mkdir -p github.com/danfis
+    cd github.com/danfis
+    git clone https://github.com/danfis/libccd
+    cd libccd
+    #ignore their instructions
+    mkdir build
+    cd build
+    cmake ..
+    make
+    sudo make install
 * sudo apt-get install ros-indigo-moveit-full
 * cd ~/ros_ws/src
 * git clone https://github.com/ros-planning/moveit_robots.git
+* clone omplapp and ompl:
+* sudo apt-get install build-essential libboost-all-dev cmake libccd-dev python-dev python-pyqt5.qtopengl python-opengl freeglut3-dev libassimp-dev libeigen3-dev libode-dev doxygen graphviz
+* cd omplapp
+* mkdir -p build/Release
+* cd build/Release
+* cmake -DCCD_LIBRARIES=/usr/local/lib/x86_64-linux-gnu/libccd.a -DCCD_INCLUDE_DIRS=/usr/local/include .
+* Fix any errors or warnings after make (make sure ompl is built correctly)
+* make -j 4 update_bindings
+Optionally, generate the Python bindings with make -j 4 update_bindings.
+Compile OMPL.app by typing make -j 4.
+Optionally, run the test programs by typing make test.
+Optionally, generate documentation by typing make doc.
+If you need to install the library, you can type sudo make install.
+The install location is specified by CMAKE_INSTALL_PREFIX.
+If you install in a non-standard location, you have to set the environment variable PYTHONPATH to the
+directory where the OMPL python module is installed (e.g., $HOME/lib/python2.7/site-packages).
+(from http://ompl.kavrakilab.org/installation.html)
+
+# From UNH AI Wiki:
+http://unh-ai.pbworks.com/w/page/105303567/OMPL
+(if you're using ROS and want OMPL, see MoveIt!)
+
+OMPL has become slightly trickier to install recently and has some outdated installation documentation, especially in terms of its dependencies and how to properly install them.
+
+Assuming you're using Ubuntu and you're fine to use your home dir as your working directory...
+
+Dependencies first:
+
+----the easy stuff----
+sudo apt-get install libboost-all-dev cmake python-dev python-qt4-dev python-qt4-gl python-opengl freeglut3-dev libassimp-dev libeigen3-dev libode-dev doxygen graphviz libqt4-dev python-pygccxmlsudo pip install python-utils
+
+----libccd----
+cd ~
+mkdir -p github.com/danfis
+cd github.com/danfis
+git clone https://github.com/danfis/libccd
+cd libccd
+#ignore their instructions
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+
+----octomap----
+cd ~
+mkdir -p github.com/OctoMap
+cd github.com/OctoMap
+git clone https://github.com/OctoMap/octomap
+cd octomap
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+
+----flann----
+cd ~
+mkdir -p github.com/mariusmuja
+cd github.com/mariusmuja
+git clone https://github.com/mariusmuja/flann
+cd flann
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+
+----fcl----
+cd ~
+mkdir -p github.com/flexible-collision-library
+cd github.com/flexible-collision-library
+git clone https://github.com/flexible-collision-library/fcl
+cd fcl
+mkdir build
+cd build
+cmake ..
+make
+#if during the previous step you run into an issue where ld complains about not having compiled libccd with -fPIC
+#you can delete /usr/local/lib/libccd.a -- and then it'll find the correct libccd.so file instead
+sudo make install
+
+----pygccxml----
+cd ~
+mkdir -p github.com/gccxml
+cd github.com/gccxml
+git clone https://github.com/gccxml/pygccxml
+cd pygccxml
+sudo python setup.py install
+
+----pyplusplus----
+cd ~
+mkdir -p bitbucket.org/ompl
+cd bitbucket.org/ompl
+hg clone https://bitbucket.org/ompl/pyplusplus
+cd pyplusplus
+sudo python setup.py install
+
+----ompl----
+cd ~
+mkdir ompl
+cd ompl
+git clone https://github.com/ompl/omplapp.git
+cd omplapp
+git clone https://github.com/ompl/ompl.git
+mkdir -p build/Release
+cd build/Release
+cmake ../..
+make update_bindings
+make
+sudo make install
 
 # run baxter:
 * In all terminals with baxter nodes running:
@@ -38,6 +160,7 @@ Merry the robot with potential fields for joint control for EECS 499 Research Pr
 * ./baxter.sh
 
 * For gazebo simulator: roslaunch cwru_baxter_sim baxter_world.launch
+* roslaunch baxter_moveit_config demo_baxter.launch
 * For motion planning: roslaunch baxter_moveit_config move_group.launch
 * For visualization: rviz rviz
 

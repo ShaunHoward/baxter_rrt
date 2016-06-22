@@ -163,6 +163,8 @@ class Merry(object):
         self.joint_states_subscriber = rospy.Subscriber("robot/joint_states", JointState, self.joint_state_cb)
 
         self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", PointCloud2, self.kinect_cb)
+
+        self.marker_subscriber = rospy.Subscriber("")
         self.tf = tf.TransformListener()
 
         self.kmeans = None
@@ -170,6 +172,8 @@ class Merry(object):
         self.bkin = baxter_kinematics(limb)
 
         rospy.on_shutdown(self.clean_shutdown)
+
+        self.goal = None
 
         # self.bridge = CvBridge()
 
@@ -210,6 +214,10 @@ class Merry(object):
                                and p.z > min_height]
         print "found closest points"
         print "there are this many close points: " + str(len(self.closest_points))
+
+    def interactive_marker_cb(self, feedback):
+        self.goal = feedback.pose.position
+        print feedback.marker_name + " is now at " + str(self.goal.x) + ", " + str(self.goal.y) + ", " + str(self.goal.z)
 
     def get_joint_angles(self, side="right"):
         """Gets the joint angle dictionary of the specified arm side."""
@@ -384,7 +392,8 @@ class Merry(object):
         :param side: the arm side of the robot
         :return: the status of the op and the goal velocities for the arm joints
         """
-        return planner.plan(self.bkin, self.generate_goal_pose(goal_point), obs, self.get_current_endpoint_velocities(), self.get_joint_angles(side), side)
+        return planner.plan(self.bkin, self.generate_goal_pose(goal_point), obs, self.get_current_endpoint_velocities(),
+                            self.get_joint_angles(side), side)
 
     def set_joint_velocities(self, joint_velocities):
         """
