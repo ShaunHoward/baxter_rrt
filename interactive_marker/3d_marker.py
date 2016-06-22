@@ -72,8 +72,8 @@ def make6DofMarker(side, fixed, interaction_mode, position_, show_6dof=False, fr
     int_marker.pose.position = position_
     int_marker.scale = size
 
-    int_marker.name = side + "marker"
-    int_marker.description = side + " control"
+    int_marker.name = side + "_marker"
+    int_marker.description = side + "_control"
 
     # insert a box
     makeBoxControl(int_marker)
@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
     # create a timer to update the published transforms
     rospy.Timer(rospy.Duration(0.01), frameCallback)
-    server = InteractiveMarkerServer("basic_controls")
+    server = InteractiveMarkerServer("merry_end_point_markers")
 
     # make left endpoint marker
     position = Point(0.672248005867, 0.485744655132, 0.0593262910843)
@@ -180,4 +180,5 @@ if __name__ == "__main__":
     make6DofMarker("right", False, InteractiveMarkerControl.NONE, position, True)
 
     server.applyChanges()
+    rospy.loginfo("marker is running in the background")
     rospy.spin()
