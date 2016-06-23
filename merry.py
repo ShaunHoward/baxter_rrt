@@ -9,6 +9,8 @@ import planner
 import random
 
 from cv_bridge import CvBridge, CvBridgeError
+from ik_solver import IKSolver
+
 from sensor_msgs import point_cloud2 as pc2
 from sensor_msgs.msg import Image, JointState, PointCloud, PointCloud2
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
@@ -17,7 +19,7 @@ from sklearn.cluster import KMeans
 from sklearn.datasets import load_digits
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
-from visualization_msgs.msg import InteractiveMarker
+from visualization_msgs.msg import InteractiveMarkerFeedback
 
 
 from geometry_msgs.msg import (
@@ -110,20 +112,10 @@ OK = "OK"
 ERROR = "ERROR"
 
 # may need to change this order to make joint names correspond to joints 1-7 in the solver
-JOINT_NAMES = ["right_s0", "right_s1", "right_e0", "right_e1", "right_w0", "right_w1", "right_w2",
-               "left_s0", "left_s1", "left_e0", "left_e1", "left_w0", "left_w1", "left_w2"]
+JOINT_NAMES = ["right_e0", "right_e1", "right_s0", "right_s1", "right_w0", "right_w1", "right_w2",
+               "left_e0", "left_e1", "left_s0", "left_s1", "left_w0", "left_w1", "left_w2"]
 NUM_JOINTS = len(JOINT_NAMES)
 MAX_TRIALS = 10
-
-
-def get_angles_dict(angles_list, side):
-    i = 0
-    angles_dict = dict()
-    for name in JOINT_NAMES:
-        if side in name:
-            angles_dict[name] = angles_list[i]
-            i += 1
-    return angles_dict
 
 
 class Merry(object):
@@ -135,7 +127,8 @@ class Merry(object):
 
         rospy.init_node("merry")
 
-        rospy.sleep(1)
+        # wait for robot to boot up
+        rospy.sleep(5)
 
         # Create baxter_interface limb instances for right and left arms
         self.right_arm = baxter_interface.Limb("right")
@@ -166,7 +159,7 @@ class Merry(object):
 
         self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", PointCloud2, self.kinect_cb)
 
-        self.marker_subscriber = rospy.Subscriber("/merry_end_point_markers/feedback", InteractiveMarker,
+        self.marker_subscriber = rospy.Subscriber("/merry_end_point_markers/feedback", InteractiveMarkerFeedback,
                                                   self.interactive_marker_cb)
         self.tf = tf.TransformListener()
 
@@ -181,6 +174,8 @@ class Merry(object):
         self.left_goal = None
 
         self.right_goal = None
+
+        self.ik_solver = IKSolver()
 
         # self.bridge = CvBridge()
 
@@ -224,33 +219,44 @@ class Merry(object):
 
     def interactive_marker_cb(self, feedback):
         print "marker callback entered!"
-        goal = Point()
-        goal.x = feedback.pose.position.x
-        goal.y = feedback.pose.position.y
-        goal.z = feedback.pose.position.z
+        goal = Pose()
+        goal.position.x = feedback.pose.position.x
+        goal.position.y = feedback.pose.position.y
+        goal.position.z = feedback.pose.position.z
+        goal.orientation.x = feedback.pose.orientation.x
+        goal.orientation.y = feedback.pose.orientation.y
+        goal.orientation.z = feedback.pose.orientation.z
+        goal.orientation.w = feedback.pose.orientation.w
         if "right" in feedback.marker_name:
+            # goal = self.transform_points([goal], source="base", dest="right_gripper")
+            # goal = goal[0] if goal else None
             self.right_goal = goal
         elif "left" in feedback.marker_name:
+            # goal = self.transform_points([goal], source="base", dest="left_gripper")
+            # goal = goal[0] if goal else None
             self.left_goal = goal
         else:
             rospy.loginfo("got singular end-point goal")
-        print feedback.marker_name + " is now at " + str(goal.x) + ", " + str(goal.y) + ", " + str(goal.z)
+        #print feedback.marker_name + " is now at " + str(goal.x) + ", " + str(goal.y) + ", " + str(goal.z)
 
     def get_joint_angles(self, side="right"):
         """Gets the joint angle dictionary of the specified arm side."""
-        joint_angles = []
-        for name in JOINT_NAMES:
-            if side in name:
-                joint_angles.append(self.joint_states[name]["position"])
+        joint_angles = self.right_arm.joint_angles() if side is "right" else self.left_arm.joint_angles()
         return joint_angles
 
     def get_joint_velocities(self, side="right"):
         """Gets the joint angle dictionary of the specified arm side."""
-        joint_velocities = []
-        for name in JOINT_NAMES:
-            if side in name:
-                joint_velocities.append(self.joint_states[name]["velocity"])
-        return np.array(joint_velocities)
+        joint_velocities = self.right_arm.joint_velocities() if side is "right" else self.left_arm.joint_velocities()
+        return joint_velocities
+
+    def get_angles_dict(self, angles_list, side):
+        i = 0
+        angles_dict = dict()
+        joint_names = self.right_arm.joint_names() if side is "right" else self.left_arm.joint_names()
+        for name in joint_names:
+            angles_dict[name] = angles_list[i]
+            i += 1
+        return angles_dict
 
     def get_current_endpoint_pose(self):
         # retrieve current pose from endpoint
@@ -276,17 +282,23 @@ class Merry(object):
         vel_msg.angular.z = current_vels['angular'].z
         return vel_msg
 
-    def generate_goal_pose(self, dest_point):
+    def generate_goal_pose(self, side, dest_point):
         """Uses inverse kinematics to generate joint angles at destination point."""
         ik_pose = Pose()
         ik_pose.position.x = dest_point[0]
         ik_pose.position.y = dest_point[1]
         ik_pose.position.z = dest_point[2]
-        current_pose = self._limb.endpoint_pose()
-        ik_pose.orientation.x = current_pose['orientation'].x
-        ik_pose.orientation.y = current_pose['orientation'].y
-        ik_pose.orientation.z = current_pose['orientation'].z
-        ik_pose.orientation.w = current_pose['orientation'].w
+        if side is "left":
+            current_pose = self.left_arm.endpoint_pose()
+        elif side is "right":
+            current_pose = self.right_arm.endpoint_pose()
+        else:
+            current_pose = None
+        if current_pose:
+            ik_pose.orientation.x = current_pose['orientation'].x
+            ik_pose.orientation.y = current_pose['orientation'].y
+            ik_pose.orientation.z = current_pose['orientation'].z
+            ik_pose.orientation.w = current_pose['orientation'].w
         return ik_pose
 
     def transform_points(self, points, source="right_gripper", dest="base"):
@@ -317,10 +329,10 @@ class Merry(object):
                 closest_dist = dist
         return None if not (closest_point and closest_dist) else [(closest_point, closest_dist)]
 
-    def solve_ik(self, goal_pos, kin_solver_instance):
+    def solve_ik(self, side, goal_pos, kin_solver_instance):
         goal_angles = None
         if goal_pos is not None:
-            goal = self.generate_goal_pose((goal_pos.x, goal_pos.y, goal_pos.z))
+            goal = self.generate_goal_pose(side, (goal_pos.x, goal_pos.y, goal_pos.z))
             # do inverse kinematics for cart pose to joint angles, then convert joint angles to joint velocities
             goal_angles = kin_solver_instance.inverse_kinematics((goal.position.x,
                                                                   goal.position.y,
@@ -336,10 +348,10 @@ class Merry(object):
         if goal_angles is not None:
             rospy.loginfo("got joint angles to execute!")
             rospy.loginfo("goal angles: " + str(goal_angles))
-            joint_positions = get_angles_dict(goal_angles, side)
+            joint_positions = self.get_angles_dict(goal_angles, side)
             print joint_positions
             # set the goal joint angles to reach the desired goal
-            status = self.move_to_joint_positions(joint_positions)
+            status = self.move_to_joint_positions(joint_positions, side)
             if status is ERROR:
                 rospy.logerr("could not set joint positions for ik solver...")
         return status
@@ -359,22 +371,34 @@ class Merry(object):
             obstacles = self.get_critical_points_of_obstacles()
             if mode is "IK":
                 rospy.sleep(1)
-                left_goal_angles = self.solve_ik(self.left_goal, self.left_kinematics)
-                right_goal_angles = self.solve_ik(self.right_goal, self.right_kinematics)
+                left_goal_angles = None
+                right_goal_angles = None
+                if self.left_goal:
+                    left_goal_angles = self.ik_solver.solve("left", self.left_goal.position, self.left_goal.orientation)
+                if self.right_goal:
+                    right_goal_angles = self.ik_solver.solve("right", self.right_goal.position, self.right_goal.orientation)
+
+                # left_goal_angles = self.solve_ik("left", self.left_goal, self.left_kinematics)
+                # right_goal_angles = self.solve_ik("right", self.right_goal, self.right_kinematics)
 
                 if obstacles is not None:
                     # apply obstacle avoidance
                     pass
-
+                l_status = OK
+                r_status = OK
                 # transform from the current gripper to the base frame for solving
                 # ik_trans = self.transform_points(points, self._arm + "_gripper", "base")
                 # execute goal angles if they are available
                 if left_goal_angles is not None:
                     # do left arm planning
-                    status = self.check_and_execute_goal_angles(left_goal_angles, "left")
-                if right_goal_angles is not None and status is OK:
+                    l_status = self.check_and_execute_goal_angles(left_goal_angles, "left")
+                if right_goal_angles is not None:
                     # do right arm planning
-                    status = self.check_and_execute_goal_angles(right_goal_angles, "right")
+                    r_status = self.check_and_execute_goal_angles(right_goal_angles, "right")
+                if l_status is OK and r_status is OK:
+                    status = OK
+                else:
+                    status = ERROR
                 # if status is ERROR:
                 #     rospy.logerr('could not find goal joint angles for at least one arm...')
                 # else:
