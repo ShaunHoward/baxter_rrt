@@ -2,32 +2,95 @@
 Merry the robot with potential fields for joint control for EECS 499 Research Project.
 
 # install rospy
-* add it to your shell path
+- add it to your shell path
 
-# install Cython, PCL for Python (not required)
-* sudo apt-get install python-dev build-essential
-* Download latest release from http://cython.org and untar it to ~/libraries
-* cd ~/libraries/Cython-0.xx
-* python setup.py install --user
-* cd ~/libraries/
-* git clone https://github.com/strawlab/python-pcl.git
-* cd python-pcl
-* python setup.py install --user
+
+# run baxter:
+- In all terminals with baxter nodes running:
+- cd ~/projects/ros_ws/
+- ./baxter.sh
+
+- For gazebo simulator: roslaunch cwru_baxter_sim baxter_world.launch
+- roslaunch baxter_moveit_config demo_baxter.launch
+- For motion planning: roslaunch baxter_moveit_config move_group.launch
+- For visualization: rviz rviz
+
+# Extract raw data from Kinect
+- http://answers.ros.org/question/9803/extracting-raw-data-from-kinect/
+
+now, in python you can:
+from roslib import message
+import sensor_msgs.point_cloud2 as pc2
+import freenect
+import pcl
+
+
+# Install Django and Postgres (necessary)
+- Install django: pip install Django==1.9.7
+- pip install psycopg2
+- Use this link to setup postgres sql:
+    https://www.digitalocean.com/community/tutorials/how-to-use-postgresql-with-your-django-application-on-ubuntu-14-04
+
+    Use these commands to create the Postgres database:
+        sudo apt-get update
+        sudo apt-get install python-pip python-dev libpq-dev postgresql postgresql-contrib
+        sudo su - postgres
+        psql
+        CREATE DATABASE merry;
+        CREATE USER lab WITH PASSWORD 'merry';
+        ALTER ROLE lab SET client_encoding TO 'utf8';
+        ALTER ROLE lab SET default_transaction_isolation TO 'read committed';
+        ALTER ROLE lab SET timezone TO 'UTC';
+        GRANT ALL PRIVILEGES ON DATABASE merry TO lab;
+        \q
+        exit
+        
+        
+# Make migrations (first time and subsequently only if django server startup says it's necessary):
+
+- cd ~/projects/ros_ws/potential_fields/merry_app/
+- python manage.py makemigrations
+- python manage.py migrate
+
+# Create superuser:
+- python manage.py createsuperuser
+- username: lab
+- pass: merryP@$$
+
+# Run django server:
+- python manage.py runserver 0.0.0.0:8000
+- http://localhost:8000/admin
+- login with superuser username and password
+
+
+
 
 # install Kinect Libraries
-* sudo apt-get install python-dev python-numpy
-* opencv: https://help.ubuntu.com/community/OpenCV
-* cd ~/libraries/
-* sudo apt-get install python-freenect
-* if above doesn't work, these are supposed to work but usually throw errors:
-* -- git clone https://github.com/OpenKinect/libfreenect.git
-* -- cd libfreenect/wrappers/python
-* -- python setup.py build_ext --inplace
+- sudo apt-get install python-dev python-numpy
+- opencv: https://help.ubuntu.com/community/OpenCV
+- cd ~/libraries/
+- sudo apt-get install python-freenect
+- if above doesn't work, these are supposed to work but usually throw errors:
+- -- git clone https://github.com/OpenKinect/libfreenect.git
+- -- cd libfreenect/wrappers/python
+- -- python setup.py build_ext --inplace
+
+
+# install Cython, PCL for Python (not required)
+- sudo apt-get install python-dev build-essential
+- Download latest release from http://cython.org and untar it to ~/libraries
+- cd ~/libraries/Cython-0.xx
+- python setup.py install --user
+- cd ~/libraries/
+- git clone https://github.com/strawlab/python-pcl.git
+- cd python-pcl
+- python setup.py install --user
+
 
 # install MoveIt! (not required)
-* sudo add-apt-repository ppa:libccd-debs/ppa
-* sudo apt-get update
-* sudo apt-get install libccd-dev
+- sudo add-apt-repository ppa:libccd-debs/ppa
+- sudo apt-get update
+- sudo apt-get install libccd-dev
     cd ~
     mkdir -p github.com/danfis
     cd github.com/danfis
@@ -39,17 +102,17 @@ Merry the robot with potential fields for joint control for EECS 499 Research Pr
     cmake ..
     make
     sudo make install
-* sudo apt-get install ros-indigo-moveit-full
-* cd ~/ros_ws/src
-* git clone https://github.com/ros-planning/moveit_robots.git
-* clone omplapp and ompl:
-* sudo apt-get install build-essential libboost-all-dev cmake libccd-dev python-dev python-pyqt5.qtopengl python-opengl freeglut3-dev libassimp-dev libeigen3-dev libode-dev doxygen graphviz
-* cd omplapp
-* mkdir -p build/Release
-* cd build/Release
-* cmake -DCCD_LIBRARIES=/usr/local/lib/x86_64-linux-gnu/libccd.a -DCCD_INCLUDE_DIRS=/usr/local/include .
-* Fix any errors or warnings after make (make sure ompl is built correctly)
-* make -j 4 update_bindings
+- sudo apt-get install ros-indigo-moveit-full
+- cd ~/ros_ws/src
+- git clone https://github.com/ros-planning/moveit_robots.git
+- clone omplapp and ompl:
+- sudo apt-get install build-essential libboost-all-dev cmake libccd-dev python-dev python-pyqt5.qtopengl python-opengl freeglut3-dev libassimp-dev libeigen3-dev libode-dev doxygen graphviz
+- cd omplapp
+- mkdir -p build/Release
+- cd build/Release
+- cmake -DCCD_LIBRARIES=/usr/local/lib/x86_64-linux-gnu/libccd.a -DCCD_INCLUDE_DIRS=/usr/local/include .
+- Fix any errors or warnings after make (make sure ompl is built correctly)
+- make -j 4 update_bindings
 Optionally, generate the Python bindings with make -j 4 update_bindings.
 Compile OMPL.app by typing make -j 4.
 Optionally, run the test programs by typing make test.
@@ -153,49 +216,6 @@ cmake ../..
 make update_bindings
 make
 sudo make install
-
-# run baxter:
-* In all terminals with baxter nodes running:
-* cd ~/projects/ros_ws/
-* ./baxter.sh
-
-* For gazebo simulator: roslaunch cwru_baxter_sim baxter_world.launch
-* roslaunch baxter_moveit_config demo_baxter.launch
-* For motion planning: roslaunch baxter_moveit_config move_group.launch
-* For visualization: rviz rviz
-
-# Extract raw data from Kinect
-* http://answers.ros.org/question/9803/extracting-raw-data-from-kinect/
-
-now, in python you can:
-from roslib import message
-import sensor_msgs.point_cloud2 as pc2
-import freenect
-import pcl
-
-
-# Install Django and Postgres (necessary)
-- Install django: pip install Django==1.9.7
-- pip install psycopg2
-- Use this link to setup postgres sql:
-    https://www.digitalocean.com/community/tutorials/how-to-use-postgresql-with-your-django-application-on-ubuntu-14-04
-
-    Use these commands to create the Postgres database:
-        sudo apt-get update
-        sudo apt-get install python-pip python-dev libpq-dev postgresql postgresql-contrib
-        sudo su - postgres
-        psql
-        CREATE DATABASE merry;
-        CREATE USER lab WITH PASSWORD 'merry';
-        ALTER ROLE lab SET client_encoding TO 'utf8';
-        ALTER ROLE lab SET default_transaction_isolation TO 'read committed';
-        ALTER ROLE lab SET timezone TO 'UTC';
-        GRANT ALL PRIVILEGES ON DATABASE merry TO lab;
-        \q
-        exit
-        
-        
-
 
 
 
