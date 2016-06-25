@@ -32,18 +32,18 @@ import pcl
     https://www.digitalocean.com/community/tutorials/how-to-use-postgresql-with-your-django-application-on-ubuntu-14-04
 
     Use these commands to create the Postgres database:
-        sudo apt-get update
-        sudo apt-get install python-pip python-dev libpq-dev postgresql postgresql-contrib
-        sudo su - postgres
-        psql
-        CREATE DATABASE merry;
-        CREATE USER lab WITH PASSWORD 'merry';
-        ALTER ROLE lab SET client_encoding TO 'utf8';
-        ALTER ROLE lab SET default_transaction_isolation TO 'read committed';
-        ALTER ROLE lab SET timezone TO 'UTC';
-        GRANT ALL PRIVILEGES ON DATABASE merry TO lab;
-        \q
-        exit
+    -    sudo apt-get update
+    -    sudo apt-get install python-pip python-dev libpq-dev postgresql postgresql-contrib
+    -    sudo su - postgres
+    -    psql
+    ``CREATE DATABASE merry;
+    CREATE USER lab WITH PASSWORD 'merry';
+    ALTER ROLE lab SET client_encoding TO 'utf8';
+    ALTER ROLE lab SET default_transaction_isolation TO 'read committed';
+    ALTER ROLE lab SET timezone TO 'UTC';
+    GRANT ALL PRIVILEGES ON DATABASE merry TO lab;
+    \q``
+    -    exit
         
         
 # Make migrations (first time and subsequently only if django server startup says it's necessary):
