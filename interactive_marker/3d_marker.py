@@ -17,7 +17,7 @@ server = None
 def frameCallback(msg):
     global counter, br
     time = rospy.Time.now()
-    br.sendTransform((0, 0, sin(counter/140.0)*2.0), (0, 0, 0, 1.0), time, "base_link", "moving_frame")
+    br.sendTransform((0, 0, sin(counter/140.0)*2.0), (0, 0, 0, 1.0), time, "base", "moving_frame")
     counter += 1
 
 

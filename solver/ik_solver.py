@@ -2,6 +2,7 @@ import argparse
 import sys
 
 import rospy
+import struct
 
 from geometry_msgs.msg import (
     PoseStamped,
@@ -45,14 +46,36 @@ class IKSolver:
             resp = iksvc(ikreq)
         except (rospy.ServiceException, rospy.ROSException), e:
             rospy.logerr("Service call failed: %s" % (e,))
-            return 1
-        if resp.isValid[0]:
-            print("SUCCESS - Valid Joint Solution Found:")
+            return None
+
+        # Check if result valid, and type of seed ultimately used to get solution
+        # convert rospy's string representation of uint8[]'s to int's
+        resp_seeds = struct.unpack('<%dB' % len(resp.result_type), resp.result_type)
+        if resp_seeds[0] != resp.RESULT_INVALID:
+            seed_str = {
+                        ikreq.SEED_USER: 'User Provided Seed',
+                        ikreq.SEED_CURRENT: 'Current Joint Angles',
+                        ikreq.SEED_NS_MAP: 'Nullspace Setpoints',
+                       }.get(resp_seeds[0], 'None')
+            #if self._verbose:
+            print("IK Solution SUCCESS - Valid Joint Solution Found from Seed Type: {0}".format(
+                     (seed_str)))
             # Format solution into Limb API-compatible dictionary
             limb_joints = dict(zip(resp.joints[0].name, resp.joints[0].position))
-            print limb_joints
-            return limb_joints
+            #if self._verbose:
+            print("IK Joint Solution:\n{0}".format(limb_joints))
+            print("------------------")
         else:
-            print("INVALID POSE - No Valid Joint Solution Found.")
+            rospy.logerr("INVALID POSE - No Valid Joint Solution Found.")
+            return None
+        return limb_joints
+        # if resp.isValid[0]:
+        #     print("SUCCESS - Valid Joint Solution Found:")
+        #     # Format solution into Limb API-compatible dictionary
+        #     limb_joints = dict(zip(resp.joints[0].name, resp.joints[0].position))
+        #     print limb_joints
+        #     return limb_joints
+        # else:
+        #     print("INVALID POSE - No Valid Joint Solution Found.")
 
-        return None
+#        return None
