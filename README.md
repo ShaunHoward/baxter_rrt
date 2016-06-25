@@ -193,6 +193,8 @@ import pcl
         GRANT ALL PRIVILEGES ON DATABASE merry TO lab;
         \q
         exit
+        
+        
 
 
 
