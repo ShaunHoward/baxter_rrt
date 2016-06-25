@@ -1,11 +1,11 @@
 # potential_fields
 Merry the robot with potential fields for joint control for EECS 499 Research Project.
 
-# install rospy
+# Install Rospy
 - add it to your shell path
 
 
-# run baxter:
+# Run Merry:
 - In all terminals with baxter nodes running:
 - cd ~/projects/ros_ws/
 - ./baxter.sh
