@@ -4,7 +4,7 @@ Merry the robot with potential fields for joint control for EECS 499 Research Pr
 # install rospy
 * add it to your shell path
 
-# install Cython, PCL for Python
+# install Cython, PCL for Python (not required)
 * sudo apt-get install python-dev build-essential
 * Download latest release from http://cython.org and untar it to ~/libraries
 * cd ~/libraries/Cython-0.xx
@@ -24,7 +24,7 @@ Merry the robot with potential fields for joint control for EECS 499 Research Pr
 * -- cd libfreenect/wrappers/python
 * -- python setup.py build_ext --inplace
 
-# install MoveIt!
+# install MoveIt! (not required)
 * sudo add-apt-repository ppa:libccd-debs/ppa
 * sudo apt-get update
 * sudo apt-get install libccd-dev
@@ -60,7 +60,7 @@ If you install in a non-standard location, you have to set the environment varia
 directory where the OMPL python module is installed (e.g., $HOME/lib/python2.7/site-packages).
 (from http://ompl.kavrakilab.org/installation.html)
 
-# From UNH AI Wiki:
+# From UNH AI Wiki (not necessary):
 http://unh-ai.pbworks.com/w/page/105303567/OMPL
 (if you're using ROS and want OMPL, see MoveIt!)
 
@@ -172,3 +172,28 @@ from roslib import message
 import sensor_msgs.point_cloud2 as pc2
 import freenect
 import pcl
+
+
+# Install Django and Postgres (necessary)
+- Install django: pip install Django==1.9.7
+- pip install psycopg2
+- Use this link to setup postgres sql:
+    https://www.digitalocean.com/community/tutorials/how-to-use-postgresql-with-your-django-application-on-ubuntu-14-04
+
+    Use these commands to create the Postgres database:
+        sudo apt-get update
+        sudo apt-get install python-pip python-dev libpq-dev postgresql postgresql-contrib
+        sudo su - postgres
+        psql
+        CREATE DATABASE merry;
+        CREATE USER lab WITH PASSWORD 'merry';
+        ALTER ROLE lab SET client_encoding TO 'utf8';
+        ALTER ROLE lab SET default_transaction_isolation TO 'read committed';
+        ALTER ROLE lab SET timezone TO 'UTC';
+        GRANT ALL PRIVILEGES ON DATABASE merry TO lab;
+        \q
+        exit
+
+
+
+
