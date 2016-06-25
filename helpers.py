@@ -25,12 +25,7 @@ def determine_overall_status(l_status, r_status):
        status = OK
     else:
        status = ERROR
-    if status is ERROR:
-        rospy.logerr('could not find goal joint angles for at least one arm...')
-    else:
-        # leave planning loop if solution was found
-        # break
-        pass
+    return status
 
 
 def generate_goal_pose_w_same_orientation(dest_point, endpoint_pose):
@@ -118,6 +113,7 @@ def get_current_endpoint_velocities(arm):
     vel_msg.angular.y = current_vels['angular'].y
     vel_msg.angular.z = current_vels['angular'].z
     return vel_msg
+
 
 def get_kmeans_instance(merry):
     # seed numpy with the answer to the universe

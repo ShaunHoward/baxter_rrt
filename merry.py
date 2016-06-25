@@ -86,29 +86,34 @@ class Merry:
 
         # self.bridge = CvBridge()
 
-    def approach(self, goal_points=[]):
+    def approach(self, goal_point_pairs):
         """
         Attempts to successfully visit all of the provided points in fifo order. Will try next point upon success or failure.
-        :param goal_points: 3d goal points in the frame of the chosen (left or right) gripper to move to with x, y, z
+        :param goal_point_pairs: 3d goal points in the frame of the chosen (left or right) gripper to move to with x, y, z
         :return: status of attempt to approach at least one of the specified points based on the success of the planning
         """
-        status = ERROR
+        status = OK
+        if goal_point_pairs is None:
+            goal_point_pairs = [(self.left_goal, self.right_goal)]
+
         # approach the goal points
-        # for goal in goal_points:
-        goal_angles = None
-        mode = "IK"
-        while True:
-            obstacles = h.get_critical_points_of_obstacles(self.closest_points)
-            if mode is "IK":
+        for left_goal, right_goal in goal_point_pairs:
+            goal_met = False
+
+            if status is ERROR:
+                # exit if in error state
+                break
+
+            while goal_met is False and status is OK:
+                obstacles = h.get_critical_points_of_obstacles(self.closest_points)
                 rospy.sleep(1)
                 left_goal_angles = None
                 right_goal_angles = None
-                if self.left_goal:
-                    left_goal_angles = self.ik_solver.solve("left", self.left_goal.position,
-                                                            self.left_goal.orientation)
-                if self.right_goal:
-                    right_goal_angles = self.ik_solver.solve("right", self.right_goal.position,
-                                                             self.right_goal.orientation)
+                # TODO multithread this!!
+                if left_goal:
+                    left_goal_angles = self.ik_solver.solve("left", left_goal)
+                if right_goal:
+                    right_goal_angles = self.ik_solver.solve("right", right_goal)
 
                 if obstacles is not None:
                     # apply obstacle avoidance
@@ -120,14 +125,12 @@ class Merry:
                 if left_goal_angles is not None:
                     # do left arm planning
                     l_status = self.check_and_execute_goal_angles(left_goal_angles, "left")
+
                 if right_goal_angles is not None:
                     # do right arm planning
                     r_status = self.check_and_execute_goal_angles(right_goal_angles, "right")
                 status = h.determine_overall_status(l_status, r_status)
-            else:
-                status = ERROR
-                rospy.logerr("mode for operation not set.. aborting.")
-                break
+                goal_met = left_goal_angles and right_goal_angles and status is OK
         return status
 
     def move_to_joint_positions(self, joint_positions, side):
@@ -177,23 +180,16 @@ class Merry:
         print "there are this many close points: " + str(len(self.closest_points))
 
     def interactive_marker_cb(self, feedback):
-        goal = Pose()
-        goal.position.x = feedback.pose.position.x
-        goal.position.y = feedback.pose.position.y
-        goal.position.z = feedback.pose.position.z
-        goal.orientation.x = feedback.pose.orientation.x
-        goal.orientation.y = feedback.pose.orientation.y
-        goal.orientation.z = feedback.pose.orientation.z
-        goal.orientation.w = feedback.pose.orientation.w
+        # store feedback pose as goal
+        goal = feedback.pose
+
+        # set right or left goal depending on marker name
         if "right" in feedback.marker_name:
-            # goal = self.transform_points([goal.position], source="base", dest="right_gripper")
-            self.right_goal = goal # goal[0] if goal else None
+            self.right_goal = goal
         elif "left" in feedback.marker_name:
-            # goal = self.transform_points([goal.position], source="base", dest="left_gripper")
-            self.left_goal = goal # goal[0] if goal else None
+            self.left_goal = goal
         else:
             rospy.loginfo("got singular end-point goal")
-        #print feedback.marker_name + " is now at " + str(goal.x) + ", " + str(goal.y) + ", " + str(goal.z)
 
     def solve_ik(self, side, goal_pos, kin_solver_instance):
         goal_angles = None
@@ -254,12 +250,16 @@ class Merry:
             self._rs.disable()
         return True
 
+    def generate_approach_path(self):
+        return None
+
     def shake_hands(self):
         """
         Tries to shake the nearest hand possible using the limb instantiated.
         Loop runs forever; kill with ctrl-c.
         """
-        if self.approach() is "OK":
+        path = self.generate_approach_path()
+        if self.approach(path) is "OK":
             return 0
         return 1
 
