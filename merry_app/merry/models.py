@@ -11,15 +11,14 @@ class Classification(models.Model):
 
 class Feature(models.Model):
     name = models.CharField(max_length=100)
-    # points will be json form of the Point() class with x, y, z and frame attributes
-    points = models.TextField()
 
     def __unicode__(self):
         return self.name
 
 
 class ColorFeature(Feature):
-    color = models.CharField()
+    # use the colour package to parse this as a Color() object for better representation
+    color = models.CharField(max_length=20)
 
 
 class HandlingPlan(models.Model):
@@ -38,11 +37,17 @@ class Image(models.Model):
         return self.name
 
 
+class PointCloud(models.Model):
+    # json serialization of Point() objects in a list
+    points = models.TextField(default="{\"points\":[{\"x\":\"\", \"y\":\"\", \"z\":\"\"}]}")
+    pcd = models.FileField()
+
+
 class Object(models.Model):
     name = models.CharField(max_length=100)
-    length = models.DecimalField()
-    width = models.DecimalField()
-    height = models.DecimalField()
+    length = models.DecimalField(decimal_places=5, max_digits=8)
+    width = models.DecimalField(decimal_places=5, max_digits=8)
+    height = models.DecimalField(decimal_places=5, max_digits=8)
     point_clouds = models.ManyToManyField(PointCloud)
     images = models.ManyToManyField(Image)
     features = models.ManyToManyField(Feature)
@@ -51,6 +56,3 @@ class Object(models.Model):
     def __unicode__(self):
         return self.name
 
-
-class PointCloud(models.Model):
-    file = models.FileField()

@@ -27,7 +27,8 @@ import pcl
 
 # Install Django and Postgres (necessary)
 - Install django: pip install Django==1.9.7
-- pip install psycopg2
+- pip install psycopg2 colour
+
 - Use this link to setup postgres sql:
     https://www.digitalocean.com/community/tutorials/how-to-use-postgresql-with-your-django-application-on-ubuntu-14-04
 
@@ -49,8 +50,8 @@ import pcl
 # Make migrations (first time and subsequently only if django server startup says it's necessary):
 
 - cd ~/projects/ros_ws/potential_fields/merry_app/
-- python manage.py makemigrations
-- python manage.py migrate
+- python manage.py makemigrations merry
+- python manage.py migrate merry
 
 # Create superuser:
 - python manage.py createsuperuser
