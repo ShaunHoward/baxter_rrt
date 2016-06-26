@@ -2,6 +2,8 @@ import argparse
 import baxter_interface
 import helpers as h
 import math
+import numpy as np
+import random
 import rospy
 
 import sys
@@ -66,13 +68,13 @@ class Merry:
         # self.gripper = baxter_interface.Gripper(limb_name)
         self.joint_states_subscriber = rospy.Subscriber("robot/joint_states", JointState, self.joint_state_cb)
 
-        #self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", PointCloud2, self.kinect_cb)
+        self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", pc2.PointCloud2, self.kinect_cb)
 
         self.marker_subscriber = rospy.Subscriber("/merry_end_point_markers/feedback", InteractiveMarkerFeedback,
                                                   self.interactive_marker_cb)
         self.tf = tf.TransformListener()
 
-        self.kmeans = None
+        self.kmeans = h.get_kmeans_instance(self)
 
         self.left_kinematics = baxter_kinematics("left")
 
@@ -86,51 +88,120 @@ class Merry:
 
         # self.bridge = CvBridge()
 
-    def approach(self, goal_point_pairs):
+    def ik_solution_exists(self, side, next_pose):
+        goal_angles = self.ik_solver.solve(side, next_pose)
+        if goal_angles is not None:
+            return True, goal_angles
+        else:
+            return False, None
+
+    def genrate_and_execute_random_path_from_start_to_end(self, side, start_pose, end_pose, DIST_THRESHOLD=0.05, MAX_ITERS=20):
+        # hold orientation constant as it in the starting pose
+        curr_point = np.array((start_pose.position.x, start_pose.position.y, start_pose.position.z))
+        goal_point = np.array((end_pose.position.x, end_pose.position.y, end_pose.position.z))
+        curr_dist = np.linalg.norm(goal_point-curr_point)
+        next_point = curr_point.copy()
+        path = [(curr_point, None)]
+        niters = 0
+        # select random x, y, z coordinates to minimize distance to goal, then check IK solution for those points
+        while curr_dist > DIST_THRESHOLD:
+            if niters > MAX_ITERS:
+                break
+            next_point[0] = curr_point[0] + random.randrange(0, 0.1)
+            next_point[1] = curr_point[1] + random.randrange(0, 0.1)
+            next_point[2] = curr_point[2] + random.randrange(0, 0.1)
+            next_pose = h.get_pose(next_point[0], next_point[1], next_point[2], start_pose.orientation.x,
+                                   start_pose.orientation.y,
+                                   start_pose.orientation.z,
+                                   start_pose.orientation.w)
+            next_dist = np.linalg.norm(goal_point-next_point)
+            if next_dist < curr_dist:
+                result, goal_angles = self.ik_solution_exists(side, next_pose)
+                if result:
+                    curr_dist = next_dist
+                    curr_point = next_point
+                    status = self.approach(side, next_pose)
+                    if status is OK:
+                        rospy.loginfo("successfully met next goal pose")
+                    # path.append((curr_point, goal_angles))
+                else:
+                    continue
+            else:
+                continue
+            niters += 1
+
+    def default_path(self):
+        # hard-coded default path for both arms
+        left_path = [h.get_pose(0.590916633606, 0.338178694248, 0.220857322216, 3.92595538301e-08, 0.687881827354, -9.44256584035e-09, 0.725822746754),
+                     h.get_pose(0.715455174446, 0.338178694248, 0.227546870708, 3.92595538301e-08, 0.687881827354, -9.44256584035e-09, 0.725822746754)]
+        right_path = [None, None]
+        path = []
+        for i in range(len(left_path)):
+            path.append((left_path[i], right_path[i]))
+        return path
+
+    def shake_hands(self):
+        """
+        Tries to shake the nearest hand possible using the limb instantiated.
+        Loop runs forever; kill with ctrl-c.
+        """
+        #path = self.generate_approach_path(self.left_goal)
+        #path = self.default_path()
+        while True:
+            lstatus = OK
+            rstatus = OK
+            if self.left_goal:
+                lstatus = self.genrate_and_execute_random_path_from_start_to_end("left", self.left_arm.endpoint_pose(), self.left_goal)
+                if lstatus is OK:
+                    self.left_goal = None
+            if self.right_goal:
+                rstatus = self.genrate_and_execute_random_path_from_start_to_end("right", self.right_arm.endpoint_pose(), self.right_goal)
+                if rstatus is OK:
+                    self.right_goal = None
+            if lstatus is ERROR and rstatus is ERROR:
+                break
+        #if self.approach(path) is "OK":
+        #    return 0
+        return 1
+
+    def approach(self, side, goal):
         """
         Attempts to successfully visit all of the provided points in fifo order. Will try next point upon success or failure.
-        :param goal_point_pairs: 3d goal points in the frame of the chosen (left or right) gripper to move to with x, y, z
+        :param side: the arm side to use
+        :param goal: 3d goal point in the base frame with x, y, z
         :return: status of attempt to approach at least one of the specified points based on the success of the planning
         """
         status = OK
-        if goal_point_pairs is None:
-            goal_point_pairs = [(self.left_goal, self.right_goal)]
+        if goal is None:
+            if side is "left":
+                goal = self.left_goal
+            else:
+                goal = self.right_goal
 
         # approach the goal points
-        for left_goal, right_goal in goal_point_pairs:
-            goal_met = False
+        goal_met = False
 
-            if status is ERROR:
-                # exit if in error state
-                break
+        while goal_met is False and status is OK:
+            obstacles = None
+            # obstacles = h.get_critical_points_of_obstacles(self)
+            rospy.sleep(1)
+            goal_angles = None
+            if goal:
+                goal_angles = self.ik_solver.solve(side, goal)
+                if goal_angles:
+                    goal_met = True
+                else:
+                    goal_met = False
+            else:
+                goal_met = True
 
-            while goal_met is False and status is OK:
-                obstacles = h.get_critical_points_of_obstacles(self.closest_points)
-                rospy.sleep(1)
-                left_goal_angles = None
-                right_goal_angles = None
-                # TODO multithread this!!
-                if left_goal:
-                    left_goal_angles = self.ik_solver.solve("left", left_goal)
-                if right_goal:
-                    right_goal_angles = self.ik_solver.solve("right", right_goal)
-
-                if obstacles is not None:
-                    # apply obstacle avoidance
-                    pass
-
-                l_status = OK
-                r_status = OK
-                # execute goal angles if they are available
-                if left_goal_angles is not None:
-                    # do left arm planning
-                    l_status = self.check_and_execute_goal_angles(left_goal_angles, "left")
-
-                if right_goal_angles is not None:
-                    # do right arm planning
-                    r_status = self.check_and_execute_goal_angles(right_goal_angles, "right")
-                status = h.determine_overall_status(l_status, r_status)
-                goal_met = left_goal_angles and right_goal_angles and status is OK
+            if obstacles is not None:
+                # apply obstacle avoidance
+                pass
+            # execute goal angles if they are available
+            if goal_angles is not None:
+                # do left arm planning
+                status = self.check_and_execute_goal_angles(goal_angles, side)
         return status
 
     def move_to_joint_positions(self, joint_positions, side):
@@ -166,7 +237,7 @@ class Merry:
             self.joint_states[names[i]]["velocity"] = velocities[i]
             self.joint_states[names[i]]["effort"] = efforts[i]
 
-    def kinect_cb(self, data, source="kinect_link", dest="right_gripper", max_dist=2, min_height=1):
+    def kinect_cb(self, data, source="kinect_link", dest="right_gripper", min_dist=0.4, max_dist=2, min_height=1):
         """
         Receives kinect points from the kinect subscriber linked to the publisher stream.
         :return: kinect points numpy array
@@ -174,7 +245,7 @@ class Merry:
         points = [p for p in pc2.read_points(data, skip_nans=True, field_names=("x", "y", "z"))]
         transformed_points = h.transform_pcl2(self.tf, dest, source, points, 3)
         print "got a transformed cloud!!"
-        self.closest_points = [p for p in transformed_points if math.sqrt(p.x**2 + p.y**2 + p.z**2) < max_dist \
+        self.closest_points = [p for p in transformed_points if min_dist < math.sqrt(p.x**2 + p.y**2 + p.z**2) < max_dist
                                and p.z > min_height]
         print "found closest points"
         print "there are this many close points: " + str(len(self.closest_points))
@@ -190,6 +261,7 @@ class Merry:
             self.left_goal = goal
         else:
             rospy.loginfo("got singular end-point goal")
+        print goal
 
     def solve_ik(self, side, goal_pos, kin_solver_instance):
         goal_angles = None
@@ -253,15 +325,6 @@ class Merry:
     def generate_approach_path(self):
         return None
 
-    def shake_hands(self):
-        """
-        Tries to shake the nearest hand possible using the limb instantiated.
-        Loop runs forever; kill with ctrl-c.
-        """
-        path = self.generate_approach_path()
-        if self.approach(path) is "OK":
-            return 0
-        return 1
 
 
 def run_robot(args):

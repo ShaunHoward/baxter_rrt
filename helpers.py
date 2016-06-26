@@ -1,5 +1,6 @@
 import argparse
 import baxter_interface
+import copy
 import math
 import numpy as np
 import rospy
@@ -67,7 +68,7 @@ def get_args():
     return parser.parse_args(rospy.myargv()[1:])
 
 
-def get_critical_points_of_obstacles(closest_points):
+def get_critical_points_of_obstacles(merry):
     """
     Considers the closest point the obstacle currently.
     In the future, will use obstacle detection to find the critical points of obstacles nearest to the robot.
@@ -75,23 +76,42 @@ def get_critical_points_of_obstacles(closest_points):
     """
     closest_point = None
     closest_dist = 15
-    # TODO: add/test kmeans!!
-    #        prediction = self.kmeans.predict(self.closest_points)
-    #        print(prediction)
-    # run obstacle detection (K-means clustering) on the points closest to the robot
-    for p in closest_points:
-        dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)
-        if closest_point is None or dist < closest_dist:
-            closest_point = p
-            closest_dist = dist
+
+    if merry.closest_points is not None and len(merry.closest_points) > 0:
+        # copy points so they're not modified while in use
+        curr_points = copy.deepcopy(merry.closest_points)
+        normalized_points = scale(curr_points)
+        if not merry.kmeans_initialized:
+            predicition = merry.kmeans.fit(normalized_points)
+            merry.kmeans_initialized = True
+        else:
+            prediction = merry.kmeans.predict(normalized_points)
+
+        print(prediction)
+        # run obstacle detection (K-means clustering) on the points closest to the robot
+        # for p in closest_points:
+        #     dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)
+        #     if closest_point is None or dist < closest_dist:
+        #         closest_point = p
+        #         closest_dist = dist
     return None if not (closest_point and closest_dist) else [(closest_point, closest_dist)]
+
+
+def get_pose(x, y, z, ox=0, oy=0, oz=0, ow=1):
+    pm = Pose()
+    pm.position.x = x
+    pm.position.y = y
+    pm.position.z = z
+    pm.orientation.x = ox
+    pm.orientation.y = oy
+    pm.orientation.z = oz
+    pm.orientation.w = ow
+    return pm
 
 
 def get_current_endpoint_pose(arm):
     # retrieve current pose from endpoint
     current_pose = arm.endpoint_pose()
-
-
     pose_msg = Pose()
     pose_msg.position.x = current_pose['position'].x
     pose_msg.position.y = current_pose['position'].y
@@ -115,18 +135,11 @@ def get_current_endpoint_velocities(arm):
     return vel_msg
 
 
-def get_kmeans_instance(merry):
+def get_kmeans_instance(merry, num_clusts=10):
+    merry.kmeans_initialized = False
     # seed numpy with the answer to the universe
     np.random.seed(42)
-    while len(merry.closest_points) == 0:
-        # busy wait until kinect update is received
-        pass
-    # copy points so they're not modified while in use
-    curr_points = [x for x in merry.closest_points]
-    data = scale(curr_points)
-    reduced_data = PCA(n_components=1).fit_transform(data)
-    kmeans = KMeans(init='k-means++', n_clusters=len(data), n_init=10)
-    kmeans.fit(reduced_data)
+    kmeans = KMeans(init='k-means++', n_clusters=num_clusts, n_init=num_clusts)
     return kmeans
 
 
