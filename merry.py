@@ -254,7 +254,7 @@ class Merry:
             elif side is "left":
                 self.left_arm.set_joint_position_speed(self.left_speed)
                 if use_move:
-                    self.right_arm.move_to_joint_positions(joint_positions)
+                    self.left_arm.move_to_joint_positions(joint_positions)
                 else:
                     self.left_arm.set_joint_positions(joint_positions)
         else:
