@@ -1,16 +1,13 @@
-import rospy
 import struct
 
+import rospy
 from baxter_core_msgs.srv import (
     SolvePositionIK,
     SolvePositionIKRequest,
 )
-
 from geometry_msgs.msg import (
-    PoseStamped,
-    Pose
+    PoseStamped
 )
-
 from std_msgs.msg import Header
 
 
@@ -42,7 +39,7 @@ class IKSolver:
             return None
 
         # Check if result valid, and type of seed ultimately used to get solution
-        # convert rospy's string representation of uint8[]'s to int's
+        # convert rospy's string representation of uint8[]'s to int'
         resp_seeds = struct.unpack('<%dB' % len(resp.result_type), resp.result_type)
         if resp_seeds[0] != resp.RESULT_INVALID:
             seed_str = {

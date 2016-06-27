@@ -4,6 +4,7 @@ from django.contrib import admin
 
 from .models import *
 
+
 admin.site.register(Classification)
 admin.site.register(ColorFeature)
 admin.site.register(HandlingPlan)

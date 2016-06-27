@@ -1,8 +1,10 @@
 import argparse
 import baxter_interface
 import copy
+import decimal
 import math
 import numpy as np
+import random
 import rospy
 
 from geometry_msgs.msg import (
@@ -19,6 +21,10 @@ __author__ = 'shaun howard'
 
 OK = "OK"
 ERROR = "ERROR"
+
+
+def generate_random_decimal(start=0.00001, stop=0.5, decimal_places=5):
+    return round(random.uniform(start, stop), decimal_places)
 
 
 def determine_overall_status(l_status, r_status):

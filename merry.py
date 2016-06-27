@@ -95,40 +95,74 @@ class Merry:
         else:
             return False, None
 
-    def genrate_and_execute_random_path_from_start_to_end(self, side, start_pose, end_pose, DIST_THRESHOLD=0.05, MAX_ITERS=20):
+    def get_goal_point(self, side):
+        if side is "left":
+            goal = self.left_goal
+        else:
+            goal = self.right_goal
+        return np.array((goal.position.x, goal.position.y, goal.position.z))
+
+    def genrate_and_execute_random_path_from_start_to_end(self, side, start_pose, DIST_THRESHOLD=0.05, MIN_THRESH=0.01, MAX_THRESH=0.5, MAX_ITERS=50, MAX_GUESSES=20):
         # hold orientation constant as it in the starting pose
-        curr_point = np.array((start_pose.position.x, start_pose.position.y, start_pose.position.z))
-        goal_point = np.array((end_pose.position.x, end_pose.position.y, end_pose.position.z))
+        curr_point = np.array((start_pose["position"].x, start_pose["position"].y, start_pose["position"].z))
+        goal_point = self.get_goal_point(side)
         curr_dist = np.linalg.norm(goal_point-curr_point)
         next_point = curr_point.copy()
-        path = [(curr_point, None)]
         niters = 0
+        status = OK
+        goal_met = False
+        got_guess = False
+        nguesses = 0
         # select random x, y, z coordinates to minimize distance to goal, then check IK solution for those points
-        while curr_dist > DIST_THRESHOLD:
-            if niters > MAX_ITERS:
+        while not goal_met:
+            if niters > MAX_ITERS or nguesses > MAX_GUESSES:
+                rospy.loginfo("could not find solution in time, broke planner loop...")
                 break
-            next_point[0] = curr_point[0] + random.randrange(0, 0.1)
-            next_point[1] = curr_point[1] + random.randrange(0, 0.1)
-            next_point[2] = curr_point[2] + random.randrange(0, 0.1)
-            next_pose = h.get_pose(next_point[0], next_point[1], next_point[2], start_pose.orientation.x,
-                                   start_pose.orientation.y,
-                                   start_pose.orientation.z,
-                                   start_pose.orientation.w)
-            next_dist = np.linalg.norm(goal_point-next_point)
+            # rospy.loginfo("generating next random point on path for " + side + " arm.")
+            goal_point = self.get_goal_point(side)
+            if side is "left":
+                goal = self.left_goal
+            else:
+                goal = self.right_goal
+            for i in range(3):
+                curr_coord = curr_point[i]
+                goal_coord = goal_point[i]
+                if curr_coord < goal:
+                    next_point[i] = h.generate_random_decimal(curr_coord, goal_coord)
+                else:
+                    next_point[i] = h.generate_random_decimal(goal_coord, curr_coord)
+
+            next_pose = h.get_pose(next_point[0],
+                                   next_point[1],
+                                   next_point[2],
+                                   goal.orientation.x,
+                                   goal.orientation.y,
+                                   goal.orientation.z,
+                                   goal.orientation.w)
+            next_dist = math.fabs(np.linalg.norm(next_point-goal_point))
+            # if MAX_THRESH > next_diff > MIN_THRESH:
+            nguesses += 1
             if next_dist < curr_dist:
+                rospy.loginfo("found next reasonable random goal")
+                rospy.loginfo("checking if IK solution exists for next goal.")
                 result, goal_angles = self.ik_solution_exists(side, next_pose)
                 if result:
+                    nguesses = 0
                     curr_dist = next_dist
                     curr_point = next_point
-                    status = self.approach(side, next_pose)
+                    rospy.loginfo("IK goal solution found. executing goal segment.")
+                    status = self.check_and_execute_goal_angles(goal_angles, side)
                     if status is OK:
-                        rospy.loginfo("successfully met next goal pose")
+                        rospy.loginfo("published next goal pose")
                     # path.append((curr_point, goal_angles))
                 else:
-                    continue
-            else:
-                continue
+                    status = ERROR
+            if curr_dist <= DIST_THRESHOLD:
+                goal_met = True
             niters += 1
+        if goal_met:
+            rospy.loginfo("met goal pose for " + side + " arm")
+        return status
 
     def default_path(self):
         # hard-coded default path for both arms
@@ -140,7 +174,7 @@ class Merry:
             path.append((left_path[i], right_path[i]))
         return path
 
-    def shake_hands(self):
+    def approach_goals(self):
         """
         Tries to shake the nearest hand possible using the limb instantiated.
         Loop runs forever; kill with ctrl-c.
@@ -151,25 +185,22 @@ class Merry:
             lstatus = OK
             rstatus = OK
             if self.left_goal:
-                lstatus = self.genrate_and_execute_random_path_from_start_to_end("left", self.left_arm.endpoint_pose(), self.left_goal)
-                if lstatus is OK:
-                    self.left_goal = None
+                lstatus = self.genrate_and_execute_random_path_from_start_to_end("left", self.left_arm.endpoint_pose())
             if self.right_goal:
-                rstatus = self.genrate_and_execute_random_path_from_start_to_end("right", self.right_arm.endpoint_pose(), self.right_goal)
-                if rstatus is OK:
-                    self.right_goal = None
+                rstatus = self.genrate_and_execute_random_path_from_start_to_end("right", self.right_arm.endpoint_pose())
             if lstatus is ERROR and rstatus is ERROR:
-                break
+                self.left_arm.set_joint_position_speed(0.0)
+                self.right_arm.set_joint_position_speed(0.0)
         #if self.approach(path) is "OK":
         #    return 0
         return 1
 
-    def approach(self, side, goal):
+    def approach_single_goal(self, side, goal):
         """
-        Attempts to successfully visit all of the provided points in fifo order. Will try next point upon success or failure.
+        Attempts to successfully visit the goal point using the IK solver.
         :param side: the arm side to use
         :param goal: 3d goal point in the base frame with x, y, z
-        :return: status of attempt to approach at least one of the specified points based on the success of the planning
+        :return: status of attempt to approach the goal point
         """
         status = OK
         if goal is None:
@@ -261,7 +292,6 @@ class Merry:
             self.left_goal = goal
         else:
             rospy.loginfo("got singular end-point goal")
-        print goal
 
     def solve_ik(self, side, goal_pos, kin_solver_instance):
         goal_angles = None
@@ -322,17 +352,13 @@ class Merry:
             self._rs.disable()
         return True
 
-    def generate_approach_path(self):
-        return None
-
-
 
 def run_robot(args):
     print("Initializing node... ")
     rospy.init_node("merry")
     merry = Merry(args.limb, args.speed, args.accuracy)
     rospy.on_shutdown(merry.clean_shutdown)
-    status = merry.shake_hands()
+    status = merry.approach_goals()
     sys.exit(status)
 
 
