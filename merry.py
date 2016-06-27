@@ -235,7 +235,7 @@ class Merry:
                 status = self.check_and_execute_goal_angles(goal_angles, side)
         return status
 
-    def move_to_joint_positions(self, joint_positions, side):
+    def move_to_joint_positions(self, joint_positions, side, use_move=True):
         """
         Moves the Baxter robot end effector to the given dict of joint velocities keyed by joint name.
         :return: a status about the move execution; in success, "OK", and in error, "ERROR".
@@ -247,10 +247,16 @@ class Merry:
         if not rospy.is_shutdown() and joint_positions is not None:
             if side is "right":
                 self.right_arm.set_joint_position_speed(self.right_speed)
-                self.right_arm.set_joint_positions(joint_positions)
+                if use_move:
+                    self.right_arm.move_to_joint_positions(joint_positions)
+                else:
+                    self.right_arm.set_joint_positions(joint_positions)
             elif side is "left":
                 self.left_arm.set_joint_position_speed(self.left_speed)
-                self.left_arm.set_joint_positions(joint_positions)
+                if use_move:
+                    self.right_arm.move_to_joint_positions(joint_positions)
+                else:
+                    self.left_arm.set_joint_positions(joint_positions)
         else:
             rospy.logerr("Joint angles are unavailable at the moment. \
                           Will try to get goal angles soon, but staying put for now.")
@@ -312,7 +318,7 @@ class Merry:
             # joint_positions = self.get_angles_dict(goal_angles, side)
             print joint_positions
             # set the goal joint angles to reach the desired goal
-            status = self.move_to_joint_positions(joint_positions, side)
+            status = self.move_to_joint_positions(joint_positions, side, True)
             if status is ERROR:
                 rospy.logerr("could not set joint positions for ik solver...")
         return status
