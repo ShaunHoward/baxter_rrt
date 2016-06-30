@@ -197,15 +197,6 @@ def plan(baxter_kinematics, goal, obstacles, end_effector_pose, joint_angles, av
     :return: the status of the planner outcome and the joint velocities to reach the goal
     """
 
-    # do inverse kinematics for cart pose to joint angles, then convert joint angles to joint velocities
-    baxter_kinematics.inverse_kinematics((goal.position.x,
-                                          goal.position.y,
-                                          goal.position.z),
-                                         (goal.orientation.x,
-                                          goal.orientation.y,
-                                          goal.orientation.z,
-                                          goal.orientation.w))
-
     # validate parameters
     params = [goal, obstacles, end_effector_pose, joint_angles, side, avoid_velocity]
     status = OK

@@ -102,8 +102,39 @@ class Merry:
             goal = self.right_goal
         return np.array((goal.position.x, goal.position.y, goal.position.z))
 
+    def has_collisions(self, pose, MIN_TOL=.1):
+        # min tolerance in meters
+        desired = pose.position
+        collisions = []
+        for p in self.closest_points:
+
+            dist = np.linalg.norm(np.array((desired.x, desired.y, desired.z)) - np.array((p.x, p.y, p.z)))
+            if dist <= MIN_TOL:
+                # append the distance and the point
+                collisions.append((dist, p))
+        return len(collisions) == 0, collisions
+
+    def compute_potential_at_point(self, goal, next_end_point, att_scale_factor=2, rep_scaling_factor=2, m=2, influence_zone=0.5):
+        # m = 2 results in a parabolic well
+        # influence zone is the radius of points near the end effector to pay attention to and use for energy calculations
+        pt = np.linalg.norm(next_end_point - goal)
+        Uatt = att_scale_factor * pt^m
+        closest_pts = [np.array((p.x, p.y, p.z)) for p in self.closest_points]
+        poi = influence_zone
+        Urep_l = []
+        # TODO scale energy functions to between 0 and 1, make Uatt positive and Urep negative?
+        for obs in closest_pts:
+            psi = np.linalg.norm(obs-next_end_point)
+            if psi <= poi:
+                energy = rep_scaling_factor * ((1/psi) - (1/poi))
+            else:
+                energy = 0
+            Urep_l.append(energy)
+        Urep = np.array(Urep_l).sum()
+        return Uatt, Urep
+
     def genrate_and_execute_random_path_from_start_to_end(self, side, start_pose, DIST_THRESHOLD=0.05, MIN_THRESH=0.01, MAX_THRESH=0.5, MAX_ITERS=50, MAX_GUESSES=20):
-        # hold orientation constant as it in the starting pose
+        # hold orientation constant as it is in the goal pose
         curr_point = np.array((start_pose["position"].x, start_pose["position"].y, start_pose["position"].z))
         goal_point = self.get_goal_point(side)
         curr_dist = np.linalg.norm(goal_point-curr_point)
@@ -124,6 +155,7 @@ class Merry:
                 goal = self.left_goal
             else:
                 goal = self.right_goal
+
             for i in range(3):
                 curr_coord = curr_point[i]
                 goal_coord = goal_point[i]
@@ -131,6 +163,9 @@ class Merry:
                     next_point[i] = h.generate_random_decimal(curr_coord, goal_coord)
                 else:
                     next_point[i] = h.generate_random_decimal(goal_coord, curr_coord)
+
+            # compute only the potential at this point to determine if point is reachable
+            Uatt, Urep = self.compute_potential_at_point(goal, next_point)
 
             next_pose = h.get_pose(next_point[0],
                                    next_point[1],
@@ -147,14 +182,18 @@ class Merry:
                 rospy.loginfo("checking if IK solution exists for next goal.")
                 result, goal_angles = self.ik_solution_exists(side, next_pose)
                 if result:
-                    nguesses = 0
-                    curr_dist = next_dist
-                    curr_point = next_point
-                    rospy.loginfo("IK goal solution found. executing goal segment.")
-                    status = self.check_and_execute_goal_angles(goal_angles, side)
-                    if status is OK:
-                        rospy.loginfo("published next goal pose")
-                    # path.append((curr_point, goal_angles))
+                    # check if generated next pose is within or near obstacle
+                    has_collision, collisions = self.has_collisions(next_pose)
+                    if not has_collision:
+                        nguesses = 0
+                        curr_dist = next_dist
+                        curr_point = next_point
+                        rospy.loginfo("IK goal solution found. executing goal segment.")
+                        status = self.check_and_execute_goal_angles(goal_angles, side)
+                        if status is OK:
+                            rospy.loginfo("published next goal pose")
+                    else:
+                        rospy.loginfo("collisions found with object for generated endpoint goal")
                 else:
                     status = ERROR
             if curr_dist <= DIST_THRESHOLD:
@@ -193,7 +232,7 @@ class Merry:
                 self.right_arm.set_joint_position_speed(0.0)
         #if self.approach(path) is "OK":
         #    return 0
-        return 1
+        return 0
 
     def approach_single_goal(self, side, goal):
         """
@@ -274,18 +313,17 @@ class Merry:
             self.joint_states[names[i]]["velocity"] = velocities[i]
             self.joint_states[names[i]]["effort"] = efforts[i]
 
-    def kinect_cb(self, data, source="kinect_link", dest="right_gripper", min_dist=0.4, max_dist=2, min_height=1):
+    def kinect_cb(self, data, source="kinect_link", dest="base", min_dist=0.4, max_dist=2, min_height=1):
         """
         Receives kinect points from the kinect subscriber linked to the publisher stream.
         :return: kinect points numpy array
         """
         points = [p for p in pc2.read_points(data, skip_nans=True, field_names=("x", "y", "z"))]
         transformed_points = h.transform_pcl2(self.tf, dest, source, points, 3)
-        print "got a transformed cloud!!"
         self.closest_points = [p for p in transformed_points if min_dist < math.sqrt(p.x**2 + p.y**2 + p.z**2) < max_dist
                                and p.z > min_height]
-        print "found closest points"
-        print "there are this many close points: " + str(len(self.closest_points))
+        if len(self.closest_points) > 0:
+            print "kinect cb: there are this many close points: " + str(len(self.closest_points))
 
     def interactive_marker_cb(self, feedback):
         # store feedback pose as goal
