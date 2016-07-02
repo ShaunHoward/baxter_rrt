@@ -23,6 +23,10 @@ OK = "OK"
 ERROR = "ERROR"
 
 
+def point_to_ndarray(point):
+    return np.array((point.x, point.y, point.z))
+
+
 def generate_random_decimal(start=0.00001, stop=0.5, decimal_places=5):
     return round(random.uniform(start, stop), decimal_places)
 

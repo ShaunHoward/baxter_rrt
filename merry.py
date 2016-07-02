@@ -100,7 +100,7 @@ class Merry:
             goal = self.left_goal
         else:
             goal = self.right_goal
-        return np.array((goal.position.x, goal.position.y, goal.position.z))
+        return h.point_to_ndarray(goal.position)
 
     def has_collisions(self, pose, MIN_TOL=.1):
         # min tolerance in meters
@@ -114,24 +114,49 @@ class Merry:
                 collisions.append((dist, p))
         return len(collisions) == 0, collisions
 
-    def compute_potential_at_point(self, goal, next_end_point, att_scale_factor=2, rep_scaling_factor=2, m=2, influence_zone=0.5):
-        # m = 2 results in a parabolic well
-        # influence zone is the radius of points near the end effector to pay attention to and use for energy calculations
-        pt = np.linalg.norm(next_end_point - goal)
-        Uatt = att_scale_factor * pt^m
-        closest_pts = [np.array((p.x, p.y, p.z)) for p in self.closest_points]
+    def compute_force_vetor_at_point(self, target_point, next_robot_point, att_scale_factor=2, rep_scaling_factor=2,
+                                     m=2, influence_zone=0.5):
+        """
+        Computes the force vector based on closest obstacles for the end effector point to travel to during
+        its current planning step. Uses a randomly selected point to approach a better solution for motion
+        planning at the current planning iteration step.
+        :param target_point: the goal point for the end effector to reach
+        :param next_robot_point: the next point the robot may travel to
+        :param att_scale_factor: the scaling factor for attractive force
+        :param rep_scaling_factor: the scaling factor for repulsive force
+        :param m: determines the shape of the potential field, m=1 leads to conic well, m=2 leads to a parabolic well
+        :param influence_zone: the radius of points to take into account for motion planning around the end effector
+        :return: the force vector to determine the next direction to go in for the end effector
+        """
+        # return None if no obstacles, since this planning force is unnecessary
+        if len(self.closest_points) == 0:
+            return None
+        # compute attractive force component
+        p_rt = target_point - next_robot_point
+        pt = np.linalg.norm(p_rt)
+        # dont need potential due to force simplification
+        # Uatt = att_scale_factor * pt**m
+        Fatt = m * att_scale_factor * (pt ** (m-2)) * p_rt
+
+        # compute repulsive energy and force
+        closest_pts = [h.point_to_ndarray(p) for p in self.closest_points]
         poi = influence_zone
-        Urep_l = []
-        # TODO scale energy functions to between 0 and 1, make Uatt positive and Urep negative?
+        Frep_l = []
         for obs in closest_pts:
-            psi = np.linalg.norm(obs-next_end_point)
-            if psi <= poi:
-                energy = rep_scaling_factor * ((1/psi) - (1/poi))
-            else:
-                energy = 0
-            Urep_l.append(energy)
-        Urep = np.array(Urep_l).sum()
-        return Uatt, Urep
+            p_roi = obs - next_robot_point
+            psi = np.linalg.norm(p_roi)
+            n_roi = p_roi / psi
+            F_rep_i = -rep_scaling_factor * (1 / (psi**2)) * n_roi
+            Frep_l.append(F_rep_i)
+            # if psi <= poi:
+            #     energy = rep_scaling_factor * ((1/psi) - (1/poi))
+            # else:
+            #     energy = 0
+            # Urep_l.append(energy)
+        # Urep = np.array(Urep_l).sum()
+        F_rep = np.array(Frep_l).sum()
+        F_tot = Fatt + F_rep
+        return F_tot
 
     def genrate_and_execute_random_path_from_start_to_end(self, side, start_pose, DIST_THRESHOLD=0.05, MIN_THRESH=0.01, MAX_THRESH=0.5, MAX_ITERS=50, MAX_GUESSES=20):
         # hold orientation constant as it is in the goal pose
@@ -144,6 +169,7 @@ class Merry:
         goal_met = False
         got_guess = False
         nguesses = 0
+        next_direction = None
         # select random x, y, z coordinates to minimize distance to goal, then check IK solution for those points
         while not goal_met:
             if niters > MAX_ITERS or nguesses > MAX_GUESSES:
@@ -152,28 +178,38 @@ class Merry:
             # rospy.loginfo("generating next random point on path for " + side + " arm.")
             goal_point = self.get_goal_point(side)
             if side is "left":
-                goal = self.left_goal
+                goal_pose = self.left_goal
             else:
-                goal = self.right_goal
+                goal_pose = self.right_goal
+
+            # determine which direction to move in based on potential field/force approach
+            F_tot = self.compute_force_vetor_at_point(goal_point, next_point)
+            next_direction = F_tot
 
             for i in range(3):
                 curr_coord = curr_point[i]
                 goal_coord = goal_point[i]
-                if curr_coord < goal:
-                    next_point[i] = h.generate_random_decimal(curr_coord, goal_coord)
+                if next_direction:
+                    # do planning based on potential field / force approach
+                    # compute coordinate in direction of force from current point on path to goal
+                    pass
                 else:
-                    next_point[i] = h.generate_random_decimal(goal_coord, curr_coord)
+                    # do planning based on straight-line approach in range from current point to goal point for each coord
+                    if curr_coord < goal_coord:
+                        next_point[i] = h.generate_random_decimal(curr_coord, goal_coord)
+                    else:
+                        next_point[i] = h.generate_random_decimal(goal_coord, curr_coord)
 
             # compute only the potential at this point to determine if point is reachable
-            Uatt, Urep = self.compute_potential_at_point(goal, next_point)
+            # Uatt, Urep = self.compute_potential_at_point(goal_point, next_point)
 
             next_pose = h.get_pose(next_point[0],
                                    next_point[1],
                                    next_point[2],
-                                   goal.orientation.x,
-                                   goal.orientation.y,
-                                   goal.orientation.z,
-                                   goal.orientation.w)
+                                   goal_pose.orientation.x,
+                                   goal_pose.orientation.y,
+                                   goal_pose.orientation.z,
+                                   goal_pose.orientation.w)
             next_dist = math.fabs(np.linalg.norm(next_point-goal_point))
             # if MAX_THRESH > next_diff > MIN_THRESH:
             nguesses += 1
@@ -218,8 +254,8 @@ class Merry:
         Tries to shake the nearest hand possible using the limb instantiated.
         Loop runs forever; kill with ctrl-c.
         """
-        #path = self.generate_approach_path(self.left_goal)
-        #path = self.default_path()
+        # path = self.generate_approach_path(self.left_goal)
+        # path = self.default_path()
         while True:
             lstatus = OK
             rstatus = OK
@@ -230,7 +266,7 @@ class Merry:
             if lstatus is ERROR and rstatus is ERROR:
                 self.left_arm.set_joint_position_speed(0.0)
                 self.right_arm.set_joint_position_speed(0.0)
-        #if self.approach(path) is "OK":
+        # if self.approach(path) is "OK":
         #    return 0
         return 0
 
