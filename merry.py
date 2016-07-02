@@ -114,16 +114,16 @@ class Merry:
                 collisions.append((dist, p))
         return len(collisions) == 0, collisions
 
-    def compute_force_vetor_at_point(self, target_point, next_robot_point, att_scale_factor=2, rep_scaling_factor=2,
-                                     m=2, influence_zone=0.5):
+    def compute_force_vetor_at_point(self, target_point, next_robot_point, att_potential_scale_factor=2,
+                                     rep_potential_scaling_factor=2, rep_force_scale_factor=1, m=2, influence_zone=0.5):
         """
         Computes the force vector based on closest obstacles for the end effector point to travel to during
         its current planning step. Uses a randomly selected point to approach a better solution for motion
         planning at the current planning iteration step.
         :param target_point: the goal point for the end effector to reach
         :param next_robot_point: the next point the robot may travel to
-        :param att_scale_factor: the scaling factor for attractive force
-        :param rep_scaling_factor: the scaling factor for repulsive force
+        :param att_potential_scale_factor: the scaling factor for attractive force
+        :param rep_potential_scaling_factor: the scaling factor for repulsive force
         :param m: determines the shape of the potential field, m=1 leads to conic well, m=2 leads to a parabolic well
         :param influence_zone: the radius of points to take into account for motion planning around the end effector
         :return: the force vector to determine the next direction to go in for the end effector
@@ -136,7 +136,7 @@ class Merry:
         pt = np.linalg.norm(p_rt)
         # dont need potential due to force simplification
         # Uatt = att_scale_factor * pt**m
-        Fatt = m * att_scale_factor * (pt ** (m-2)) * p_rt
+        Fatt = m * att_potential_scale_factor * (pt ** (m - 2)) * p_rt
 
         # compute repulsive energy and force
         closest_pts = [h.point_to_ndarray(p) for p in self.closest_points]
@@ -146,7 +146,7 @@ class Merry:
             p_roi = obs - next_robot_point
             psi = np.linalg.norm(p_roi)
             n_roi = p_roi / psi
-            F_rep_i = -rep_scaling_factor * (1 / (psi**2)) * n_roi
+            F_rep_i = -rep_potential_scaling_factor * (1 / (psi ** 2)) * n_roi
             Frep_l.append(F_rep_i)
             # if psi <= poi:
             #     energy = rep_scaling_factor * ((1/psi) - (1/poi))
@@ -154,8 +154,10 @@ class Merry:
             #     energy = 0
             # Urep_l.append(energy)
         # Urep = np.array(Urep_l).sum()
-        F_rep = np.array(Frep_l).sum()
-        F_tot = Fatt + F_rep
+        F_rep = np.sum(Frep_l, 0)
+        # divide F_rep by the number of closest points to normalize the repulsive force
+        F_rep_norm = F_rep / len(closest_pts)
+        F_tot = Fatt + (rep_force_scale_factor * F_rep_norm)
         return F_tot
 
     def genrate_and_execute_random_path_from_start_to_end(self, side, start_pose, DIST_THRESHOLD=0.05, MIN_THRESH=0.01, MAX_THRESH=0.5, MAX_ITERS=50, MAX_GUESSES=20):
