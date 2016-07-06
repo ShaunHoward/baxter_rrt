@@ -174,9 +174,12 @@ def transform_pcl2(tf_, target_frame, source_frame, point_cloud, duration=2):
     # returns a list of transformed points
     tf_.waitForTransform(target_frame, source_frame, rospy.Time.now(), rospy.Duration(duration))
     mat44 = as_matrix2(tf_, target_frame, source_frame)
-    if not isinstance(point_cloud[0], tuple) and not isinstance(point_cloud[0], list):
-        point_cloud = [(p.x, p.y, p.z) for p in point_cloud]
-    return [Point(*(tuple(np.dot(mat44, np.array([p[0], p[1], p[2], 1.0])))[:3])) for p in point_cloud]
+    if point_cloud[0]:
+        if not isinstance(point_cloud[0], tuple) and not isinstance(point_cloud[0], list):
+            point_cloud = [(p.x, p.y, p.z) for p in point_cloud]
+        return [Point(*(tuple(np.dot(mat44, np.array([p[0], p[1], p[2], 1.0])))[:3])) for p in point_cloud]
+    else:
+        return []
 
 
 def transform_points(tf, points, source="right_gripper", dest="base"):

@@ -10,6 +10,14 @@ Merry the robot with potential fields for joint control for EECS 499 Research Pr
 - cd ~/projects/ros_ws/
 - ./baxter.sh
 
+- chmod +x start_planning.sh
+- ./start_planning.sh
+
+# add startup command to .bashrc (start_planning)
+- nano ~/.bashrc
+- add: alias start_planning='~/projects/ros_ws/src/potential_fields/start_planning.sh'
+
+
 - For gazebo simulator: roslaunch cwru_baxter_sim baxter_world.launch
 - roslaunch baxter_moveit_config demo_baxter.launch
 - For motion planning: roslaunch baxter_moveit_config move_group.launch
@@ -78,7 +86,9 @@ import pcl
 
 
 # install Cython, PCL for Python (not required)
-- sudo apt-get install python-dev build-essential
+- sudo add-apt-repository ppa:v-launchpad-jochen-sprickerhof-de/pcl
+- sudo apt-get update
+- sudo apt-get install python-dev build-essential libpcl-all
 - Download latest release from http://cython.org and untar it to ~/libraries
 - cd ~/libraries/Cython-0.xx
 - python setup.py install --user

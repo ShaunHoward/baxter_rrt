@@ -142,6 +142,7 @@ class Merry:
         closest_pts = [h.point_to_ndarray(p) for p in self.closest_points]
         poi = influence_zone
         Frep_l = []
+        # TODO: filter points to be voxel grid!
         for obs in closest_pts:
             p_roi = obs - next_robot_point
             psi = np.linalg.norm(p_roi)
@@ -171,7 +172,12 @@ class Merry:
         goal_met = False
         got_guess = False
         nguesses = 0
-        next_direction = None
+        next_direction = self.compute_force_vetor_at_point(goal_point, curr_point)
+        goal_changed = False
+
+        # TODO: parameter that needs to be fit for occasion
+        t = 1
+
         # select random x, y, z coordinates to minimize distance to goal, then check IK solution for those points
         while not goal_met:
             if niters > MAX_ITERS or nguesses > MAX_GUESSES:
@@ -184,19 +190,29 @@ class Merry:
             else:
                 goal_pose = self.right_goal
 
-            # determine which direction to move in based on potential field/force approach
-            F_tot = self.compute_force_vetor_at_point(goal_point, next_point)
-            next_direction = F_tot
+            if goal_changed:
+                # determine which direction to move in based on potential field/force approach
+                F_tot = self.compute_force_vetor_at_point(goal_point, next_point)
+                next_direction = F_tot / np.linalg.norm(F_tot)
+                goal_changed = False
+
+                """
+                    linalg.solve(a, b)	Solve a linear matrix equation, or system of linear scalar equations.
+                    linalg.tensorsolve(a, b[, axes])	Solve the tensor equation a x = b for x.
+                    linalg.lstsq(a, b[, rcond])	Return the least-squares solution to a linear matrix equation.
+                """
 
             for i in range(3):
                 curr_coord = curr_point[i]
                 goal_coord = goal_point[i]
-                if next_direction:
+                if next_direction is not None:
                     # do planning based on potential field / force approach
                     # compute coordinate in direction of force from current point on path to goal
-                    pass
+                    # use parametric form of line: x=x0+tay=y0+tbz=z0+tc
+                    next_point[i] = curr_point[i] + t * next_direction[i]
                 else:
-                    # do planning based on straight-line approach in range from current point to goal point for each coord
+                    # do planning based on straight-line approach in range from current point to
+                    # goal point for each coord
                     if curr_coord < goal_coord:
                         next_point[i] = h.generate_random_decimal(curr_coord, goal_coord)
                     else:
@@ -229,6 +245,7 @@ class Merry:
                         rospy.loginfo("IK goal solution found. executing goal segment.")
                         status = self.check_and_execute_goal_angles(goal_angles, side)
                         if status is OK:
+                            goal_changed = True
                             rospy.loginfo("published next goal pose")
                     else:
                         rospy.loginfo("collisions found with object for generated endpoint goal")
