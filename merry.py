@@ -103,15 +103,19 @@ class Merry:
         return h.point_to_ndarray(goal.position)
 
     def has_collisions(self, pose, MIN_TOL=.1):
+        # TODO fix slowness! change to voxel grid!!
         # min tolerance in meters
         desired = pose.position
         collisions = []
+        i = 0
         for p in self.closest_points:
-
-            dist = np.linalg.norm(np.array((desired.x, desired.y, desired.z)) - np.array((p.x, p.y, p.z)))
-            if dist <= MIN_TOL:
-                # append the distance and the point
-                collisions.append((dist, p))
+            # only do every 5 points for now to speed things up
+            if i % 5 == 0:
+                dist = np.linalg.norm(np.array((desired.x, desired.y, desired.z)) - np.array((p.x, p.y, p.z)))
+                if dist <= MIN_TOL:
+                    # append the distance and the point
+                    collisions.append((dist, p))
+            i += 1
         return len(collisions) == 0, collisions
 
     def compute_force_vetor_at_point(self, target_point, next_robot_point, att_potential_scale_factor=2,
@@ -143,17 +147,21 @@ class Merry:
         poi = influence_zone
         Frep_l = []
         # TODO: filter points to be voxel grid!
+        i = 0
         for obs in closest_pts:
-            p_roi = obs - next_robot_point
-            psi = np.linalg.norm(p_roi)
-            n_roi = p_roi / psi
-            F_rep_i = -rep_potential_scaling_factor * (1 / (psi ** 2)) * n_roi
-            Frep_l.append(F_rep_i)
-            # if psi <= poi:
-            #     energy = rep_scaling_factor * ((1/psi) - (1/poi))
-            # else:
-            #     energy = 0
-            # Urep_l.append(energy)
+            # do every 5 points for efficiency
+            if i % 5 == 0:
+                p_roi = obs - next_robot_point
+                psi = np.linalg.norm(p_roi)
+                n_roi = p_roi / psi
+                F_rep_i = -rep_potential_scaling_factor * (1 / (psi ** 2)) * n_roi
+                Frep_l.append(F_rep_i)
+                # if psi <= poi:
+                #     energy = rep_scaling_factor * ((1/psi) - (1/poi))
+                # else:
+                #     energy = 0
+                # Urep_l.append(energy)
+            i += 1
         # Urep = np.array(Urep_l).sum()
         F_rep = np.sum(Frep_l, 0)
         # divide F_rep by the number of closest points to normalize the repulsive force
@@ -174,6 +182,7 @@ class Merry:
         nguesses = 0
         next_direction = self.compute_force_vetor_at_point(goal_point, curr_point)
         goal_changed = False
+        using_force = False
 
         # TODO: parameter that needs to be fit for occasion
         t = 1
@@ -191,10 +200,10 @@ class Merry:
                 goal_pose = self.right_goal
 
             if goal_changed:
-                # determine which direction to move in based on potential field/force approach
-                F_tot = self.compute_force_vetor_at_point(goal_point, next_point)
-                next_direction = F_tot / np.linalg.norm(F_tot)
-                goal_changed = False
+                # # determine which direction to move in based on potential field/force approach
+                # F_tot = self.compute_force_vetor_at_point(goal_point, next_point)
+                # next_direction = F_tot / np.linalg.norm(F_tot)
+                # goal_changed = False
 
                 """
                     linalg.solve(a, b)	Solve a linear matrix equation, or system of linear scalar equations.
@@ -205,18 +214,20 @@ class Merry:
             for i in range(3):
                 curr_coord = curr_point[i]
                 goal_coord = goal_point[i]
-                if next_direction is not None:
-                    # do planning based on potential field / force approach
-                    # compute coordinate in direction of force from current point on path to goal
-                    # use parametric form of line: x=x0+tay=y0+tbz=z0+tc
-                    next_point[i] = curr_point[i] + t * next_direction[i]
+                # if next_direction is not None:
+                #     # do planning based on potential field / force approach
+                #     # compute coordinate in direction of force from current point on path to goal
+                #     # use parametric form of line: x=x0+tay=y0+tbz=z0+tc
+                #     next_point[i] = curr_point[i] + t * next_direction[i]
+                #     using_force = True
+                # else:
+                #     using_force = False
+                # do planning based on straight-line approach in range from current point to
+                # goal point for each coord
+                if curr_coord < goal_coord:
+                    next_point[i] = h.generate_random_decimal(curr_coord, goal_coord)
                 else:
-                    # do planning based on straight-line approach in range from current point to
-                    # goal point for each coord
-                    if curr_coord < goal_coord:
-                        next_point[i] = h.generate_random_decimal(curr_coord, goal_coord)
-                    else:
-                        next_point[i] = h.generate_random_decimal(goal_coord, curr_coord)
+                    next_point[i] = h.generate_random_decimal(goal_coord, curr_coord)
 
             # compute only the potential at this point to determine if point is reachable
             # Uatt, Urep = self.compute_potential_at_point(goal_point, next_point)
@@ -231,7 +242,7 @@ class Merry:
             next_dist = math.fabs(np.linalg.norm(next_point-goal_point))
             # if MAX_THRESH > next_diff > MIN_THRESH:
             nguesses += 1
-            if next_dist < curr_dist:
+            if using_force or next_dist < curr_dist:
                 rospy.loginfo("found next reasonable random goal")
                 rospy.loginfo("checking if IK solution exists for next goal.")
                 result, goal_angles = self.ik_solution_exists(side, next_pose)
@@ -392,7 +403,7 @@ class Merry:
         else:
             rospy.loginfo("got singular end-point goal")
 
-    def solve_ik(self, side, goal_pos, kin_solver_instance):
+    def solve_ik(self, goal_pos, kin_solver_instance):
         goal_angles = None
         if goal_pos is not None:
             # goal = self.generate_goal_pose(side, (goal_pos.x, goal_pos.y, goal_pos.z))

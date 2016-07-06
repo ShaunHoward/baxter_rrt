@@ -85,17 +85,20 @@ import pcl
 - -- python setup.py build_ext --inplace
 
 
-# install Cython, PCL for Python (not required)
+# install Cython, PCL for Python (doesn't seem to work due to improper installation)
 - sudo add-apt-repository ppa:v-launchpad-jochen-sprickerhof-de/pcl
 - sudo apt-get update
 - sudo apt-get install python-dev build-essential libpcl-all
 - Download latest release from http://cython.org and untar it to ~/libraries
 - cd ~/libraries/Cython-0.xx
-- python setup.py install --user
+- sudo python setup.py install
 - cd ~/libraries/
 - git clone https://github.com/strawlab/python-pcl.git
 - cd python-pcl
-- python setup.py install --user
+- sudo python setup.py clean
+- sudo make clean
+- sudo make all
+- sudo python setup.py install (make sure compiler for make and install are same!!!)
 
 
 # install MoveIt! (not required)
