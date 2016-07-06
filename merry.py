@@ -169,7 +169,53 @@ class Merry:
         F_tot = Fatt + (rep_force_scale_factor * F_rep_norm)
         return F_tot
 
-    def genrate_and_execute_random_path_from_start_to_end(self, side, start_pose, DIST_THRESHOLD=0.05, MIN_THRESH=0.01, MAX_THRESH=0.5, MAX_ITERS=50, MAX_GUESSES=20):
+    def closest_node_to_goal(self):
+        pass
+
+    def jacobian_transpose(self):
+        pass
+
+    def collision_free(self):
+        pass
+
+    def workspace_delta(self):
+        pass
+
+    def extend_toward_goal(self, x_goal, q_goal, dist_thresh=0.1):
+        q_old = self.closest_node_to_goal()
+        first = True
+        q_new = q_old
+        Q_new = []
+        while first or self.dist_to_goal(q_new, q_goal) > dist_thresh:
+            J_T = self.jacobian_transpose(q_old)
+            d_x = self.workspace_delta(q_old, x_goal)
+            d_q = J_T * d_x
+            q_new = q_old + d_q
+            if self.collision_free(q_old, q_new):
+                Q_new.append(q_new)
+            else:
+                return Q_new
+            q_old = q_new
+        return Q_new
+
+            first = False
+    def dist_to_goal(self, q_curr, q_goal):
+        return np.linalg.norm(q_goal-q_curr)
+
+    def grow_rrt(self, q_start, q_goal, dist_thresh=0.1, p_goal=0.5):
+        q_new = [q_start]
+        rrt = []
+        while self.dist_to_goal(q_new[-1], q_goal) > dist_thresh:
+            p = random.uniform(0, 1)
+            if p < p_goal:
+                q_new = self.extend_toward_goal()
+            else:
+                q_new = self.extend_randomly()
+            if q_new is not None:
+                rrt = rrt + q_new
+        return rrt
+
+    def generate_and_execute_random_path_from_start_to_end(self, side, start_pose, DIST_THRESHOLD=0.05, MIN_THRESH=0.01, MAX_THRESH=0.5, MAX_ITERS=50, MAX_GUESSES=20):
         # hold orientation constant as it is in the goal pose
         curr_point = np.array((start_pose["position"].x, start_pose["position"].y, start_pose["position"].z))
         goal_point = self.get_goal_point(side)
@@ -290,9 +336,9 @@ class Merry:
             lstatus = OK
             rstatus = OK
             if self.left_goal:
-                lstatus = self.genrate_and_execute_random_path_from_start_to_end("left", self.left_arm.endpoint_pose())
+                lstatus = self.generate_and_execute_random_path_from_start_to_end("left", self.left_arm.endpoint_pose())
             if self.right_goal:
-                rstatus = self.genrate_and_execute_random_path_from_start_to_end("right", self.right_arm.endpoint_pose())
+                rstatus = self.generate_and_execute_random_path_from_start_to_end("right", self.right_arm.endpoint_pose())
             if lstatus is ERROR and rstatus is ERROR:
                 self.left_arm.set_joint_position_speed(0.0)
                 self.right_arm.set_joint_position_speed(0.0)
