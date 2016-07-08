@@ -11,6 +11,7 @@ import tf
 
 from baxter_pykdl import baxter_kinematics
 
+
 from geometry_msgs.msg import (
     PoseStamped,
     Pose,
@@ -18,6 +19,7 @@ from geometry_msgs.msg import (
     Twist
 )
 
+from planner.rrt import RRT
 from sensor_msgs import point_cloud2 as pc2
 from sensor_msgs.msg import JointState
 from solver.ik_solver import IKSolver
@@ -169,50 +171,14 @@ class Merry:
         F_tot = Fatt + (rep_force_scale_factor * F_rep_norm)
         return F_tot
 
-    def closest_node_to_goal(self):
-        pass
-
-    def jacobian_transpose(self):
-        pass
-
-    def collision_free(self):
-        pass
-
-    def workspace_delta(self):
-        pass
-
-    def extend_toward_goal(self, x_goal, q_goal, dist_thresh=0.1):
-        q_old = self.closest_node_to_goal()
-        first = True
-        q_new = q_old
-        Q_new = []
-        while first or self.dist_to_goal(q_new, q_goal) > dist_thresh:
-            J_T = self.jacobian_transpose(q_old)
-            d_x = self.workspace_delta(q_old, x_goal)
-            d_q = J_T * d_x
-            q_new = q_old + d_q
-            if self.collision_free(q_old, q_new):
-                Q_new.append(q_new)
-            else:
-                return Q_new
-            q_old = q_new
-        return Q_new
-
-            first = False
-    def dist_to_goal(self, q_curr, q_goal):
-        return np.linalg.norm(q_goal-q_curr)
-
-    def grow_rrt(self, q_start, q_goal, dist_thresh=0.1, p_goal=0.5):
-        q_new = [q_start]
-        rrt = []
-        while self.dist_to_goal(q_new[-1], q_goal) > dist_thresh:
+    def grow_rrt(self, side, q_start, q_goal, dist_thresh=0.1, p_goal=0.5):
+        rrt = RRT(q_start, q_goal, self.left_kinematics, self.right_kinematics)
+        while rrt.dist_to_goal() > dist_thresh:
             p = random.uniform(0, 1)
             if p < p_goal:
-                q_new = self.extend_toward_goal()
+                rrt.extend_toward_goal()
             else:
-                q_new = self.extend_randomly()
-            if q_new is not None:
-                rrt = rrt + q_new
+                rrt.extend_randomly()
         return rrt
 
     def generate_and_execute_random_path_from_start_to_end(self, side, start_pose, DIST_THRESHOLD=0.05, MIN_THRESH=0.01, MAX_THRESH=0.5, MAX_ITERS=50, MAX_GUESSES=20):
