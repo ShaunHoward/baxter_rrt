@@ -55,13 +55,13 @@ class RRT:
         return self.curr_node()
 
     def workspace_delta(self, x_curr):
-        return self.x_goal - x_curr
+        return (self.x_goal - x_curr)[:6]
 
     def fwd_kin(self, q_dict):
         return self.kin.forward_position_kinematics(q_dict)
 
-    def jacobian_transpose(self, q_curr):
-        return self.kin.jacobian_transpose(q_curr)
+    def jacobian_transpose(self, q_curr_dict):
+        return self.kin.jacobian_transpose(q_curr_dict)
 
     def collision_free(self, q_new, obstacle_waves, obs_mapping_fn, min_thresh=0.05):
         x_new = self.fwd_kin(q_new)
@@ -87,12 +87,14 @@ class RRT:
         while first or self._dist_to_goal(q_new) > dist_thresh:
             if first:
                 first = False
-            J_T = self.jacobian_transpose(q_old_angles)
-            x_old = self.fwd_kin(q_old_angles)
+            J_T = self.jacobian_transpose(q_old)
+            x_old = self.fwd_kin(q_old)
             d_x = self.workspace_delta(x_old)
-            d_q = J_T * d_x
+            # TODO fix matrix alignment issues
+            d_q = np.dot(J_T, d_x)
             q_new_angles = q_old_angles + d_q
-            if self.collision_free(q_new_angles, obstacle_waves, obs_mapping_fn):
+            q_new = wrap_angles_in_dict(q_new_angles, q_old.keys())
+            if self.collision_free(q_new, obstacle_waves, obs_mapping_fn):
                 Q_new.append(wrap_angles_in_dict(q_new_angles, q_old.keys()))
             else:
                 break
@@ -102,7 +104,7 @@ class RRT:
     def ik_extend_randomly(self, obstacle_waves, obs_mapping_fn, dist_thresh):
         # only add one node via random soln for now
         x_curr = self.fwd_kin(self.curr_node())
-        goal = self.fwd_kin(self.goal_node())
+        goal = self.goal_node()
         first = True
         Q_new = []
         while first or self.workspace_delta(x_curr) > dist_thresh:

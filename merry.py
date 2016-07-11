@@ -144,6 +144,16 @@ class Merry:
         else:
             return None
 
+    def get_goal_pose(self, side):
+        if side is "left":
+            goal = self.left_goal
+        else:
+            goal = self.right_goal
+        if goal:
+            return h.pose_to_ndarray(goal)
+        else:
+            return None
+
     def get_obs_for_side(self, side):
         if side == "left":
             return self.left_obstacle_waves
@@ -255,6 +265,7 @@ class Merry:
     def interactive_marker_cb(self, feedback):
         # store feedback pose as goal
         goal = feedback.pose
+        h.pose_to_ndarray(goal)
 
         # set right or left goal depending on marker name
         if "right" in feedback.marker_name:

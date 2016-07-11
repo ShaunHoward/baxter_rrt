@@ -14,7 +14,6 @@ def generate_and_execute_random_path_from_start_to_end(self, side, start_pose, D
     goal_changed = False
     using_force = False
 
-    # TODO: parameter that needs to be fit for occasion
     t = 1
 
     # select random x, y, z coordinates to minimize distance to goal, then check IK solution for those points
@@ -183,7 +182,6 @@ def compute_force_vetor_at_point(self, target_point, next_robot_point, att_poten
     closest_pts = [h.point_to_ndarray(p) for p in self.closest_points]
     poi = influence_zone
     Frep_l = []
-    # TODO: filter points to be voxel grid!
     i = 0
     for obs in closest_pts:
         # do every 5 points for efficiency
