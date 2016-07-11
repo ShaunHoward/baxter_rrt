@@ -205,3 +205,19 @@ def compute_force_vetor_at_point(self, target_point, next_robot_point, att_poten
     F_rep_norm = F_rep / len(closest_pts)
     F_tot = Fatt + (rep_force_scale_factor * F_rep_norm)
     return F_tot
+
+
+    # def has_collisions(self, pose, MIN_TOL=.1):
+    #     # min tolerance in meters
+    #     desired = pose.position
+    #     collisions = []
+    #     i = 0
+    #     for p in self.closest_points:
+    #         # only do every 5 points for now to speed things up
+    #         if i % 5 == 0:
+    #             dist = np.linalg.norm(np.array((desired.x, desired.y, desired.z)) - np.array((p.x, p.y, p.z)))
+    #             if dist <= MIN_TOL:
+    #                 # append the distance and the point
+    #                 collisions.append((dist, p))
+    #         i += 1
+    #     return len(collisions) == 0, collisions

@@ -14,15 +14,21 @@ def ik_soln_exists(goal_pos, kin_solver_instance):
         return False, None
 
 
+def wrap_angles_in_dict(angles, keys):
+    q_dict = dict()
+    for i in range(len(keys)):
+        q_dict[keys[i]] = angles[i]
+    return q_dict
+
+
 class RRT:
     # one-way RRT
 
-    def __init__(self, q_start, qx_goal, kin_solver, side):
-        self.q_start = q_start
-        self.q_goal = qx_goal[0]  # q goal is first in tuple
-        self.x_goal = qx_goal[1]  # x goal is second in tuple
-        self.nodes = []
+    def __init__(self, q_start, x_goal, kin_solver, side):
         self.kin = kin_solver
+        self.q_start = q_start
+        self.x_goal = h.pose_to_ndarray(x_goal)
+        self.nodes = []
         self.side = side
 
     def add_nodes(self, nodes_to_add):
@@ -40,10 +46,10 @@ class RRT:
         return np.linalg.norm(stop - start)
 
     def _dist_to_goal(self, curr):
-        return self.dist(self.goal_node(), curr)
+        return self.dist(curr, self.goal_node())
 
     def dist_to_goal(self):
-        return self._dist_to_goal(self.curr_node())
+        return self._dist_to_goal(self.fwd_kin(self.curr_node()))
 
     def closest_node_to_goal(self):
         return self.curr_node()
@@ -74,30 +80,34 @@ class RRT:
     def extend_toward_goal(self, obstacle_waves, obs_mapping_fn, dist_thresh=0.1):
         # get the closest node to goal and try to complete the tree
         q_old = self.closest_node_to_goal()
+        q_old_angles = np.array(q_old.values())
         first = True
-        q_new = q_old
+        q_new = q_old.copy()
         Q_new = []
         while first or self._dist_to_goal(q_new) > dist_thresh:
             if first:
                 first = False
-            J_T = self.jacobian_transpose(q_old)
-            x_old = self.fwd_kin(q_old)
+            J_T = self.jacobian_transpose(q_old_angles)
+            x_old = self.fwd_kin(q_old_angles)
             d_x = self.workspace_delta(x_old)
             d_q = J_T * d_x
-            q_new = q_old + d_q
-            if self.collision_free(q_new, obstacle_waves, obs_mapping_fn):
-                Q_new.append(q_new)
+            q_new_angles = q_old_angles + d_q
+            if self.collision_free(q_new_angles, obstacle_waves, obs_mapping_fn):
+                Q_new.append(wrap_angles_in_dict(q_new_angles, q_old.keys()))
             else:
-                return Q_new
+                break
             q_old = q_new
         self.add_nodes(Q_new)
 
-    def extend_randomly(self, obstacle_waves, obs_mapping_fn, dist_thresh):
+    def ik_extend_randomly(self, obstacle_waves, obs_mapping_fn, dist_thresh):
         # only add one node via random soln for now
         x_curr = self.fwd_kin(self.curr_node())
         goal = self.fwd_kin(self.goal_node())
-        not_valid = True
-        while not_valid:
+        first = True
+        Q_new = []
+        while first or self.workspace_delta(x_curr) > dist_thresh:
+            if first:
+                first = False
             next_point = []
             for i in range(3):
                 curr_coord = x_curr[i]
@@ -108,8 +118,11 @@ class RRT:
                     next_point.append(h.generate_random_decimal(goal_coord, curr_coord))
 
             if self._check_collisions(next_point, obstacle_waves, obs_mapping_fn, dist_thresh):
-                solved, ik_soln = ik_soln_exists(next_point, self.kin)
+                solved, q_new = ik_soln_exists(next_point, self.kin)
                 if solved:
-                    not_valid = False
-                    self.add_nodes([ik_soln])
+                    if self.collision_free(q_new, obstacle_waves, obs_mapping_fn):
+                        Q_new.append(wrap_angles_in_dict(q_new, self.curr_node().keys()))
+                    else:
+                        break
+        self.add_nodes(Q_new)
 

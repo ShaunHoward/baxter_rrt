@@ -120,28 +120,29 @@ class Merry:
             status = ERROR
         return status
 
+    def check_and_execute_goal_angles(self, goal_angles, side):
+        status = ERROR
+        if goal_angles is not None:
+            rospy.loginfo("got joint angles to execute!")
+            rospy.loginfo("goal angles: " + str(goal_angles))
+            joint_positions = goal_angles
+            # joint_positions = self.get_angles_dict(goal_angles, side)
+            print joint_positions
+            # set the goal joint angles to reach the desired goal
+            status = self.move_to_joint_positions(joint_positions, side, True)
+            if status is ERROR:
+                rospy.logerr("could not set joint positions for ik solver...")
+        return status
+
     def get_goal_point(self, side):
         if side is "left":
             goal = self.left_goal
         else:
             goal = self.right_goal
-        return h.point_to_ndarray(goal.position)
-
-    def has_collisions(self, pose, MIN_TOL=.1):
-        # TODO fix slowness! change to voxel grid!!
-        # min tolerance in meters
-        desired = pose.position
-        collisions = []
-        i = 0
-        for p in self.closest_points:
-            # only do every 5 points for now to speed things up
-            if i % 5 == 0:
-                dist = np.linalg.norm(np.array((desired.x, desired.y, desired.z)) - np.array((p.x, p.y, p.z)))
-                if dist <= MIN_TOL:
-                    # append the distance and the point
-                    collisions.append((dist, p))
-            i += 1
-        return len(collisions) == 0, collisions
+        if goal:
+            return h.point_to_ndarray(goal.position)
+        else:
+            return None
 
     def get_obs_for_side(self, side):
         if side == "left":
@@ -155,14 +156,14 @@ class Merry:
         else:
             return self.right_kinematics
 
-    def grow_rrt(self, side, q_start, q_goal, obs_mapping_fn, dist_thresh=0.1, p_goal=0.5):
-        rrt = RRT(q_start, q_goal, self.get_kin(side), side)
+    def grow_rrt(self, side, q_start, x_goal, obs_mapping_fn, dist_thresh=0.1, p_goal=0.5):
+        rrt = RRT(q_start, x_goal, self.get_kin(side), side)
         while rrt.dist_to_goal() > dist_thresh:
             p = random.uniform(0, 1)
             if p < p_goal:
                 rrt.extend_toward_goal(side, self.get_obs_for_side(side), obs_mapping_fn)
             else:
-                rrt.extend_randomly()
+                rrt.ik_extend_randomly(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
         return rrt
 
     def approach_goals(self):
@@ -176,10 +177,11 @@ class Merry:
         while True:
             left_rrt = None
             if self.left_goal:
-                left_rrt = self.grow_rrt("left", self.left_arm.endpoint_pose(), self.left_goal, self.map_point_to_wavefront_rank)
+                left_rrt = self.grow_rrt("left", self.left_arm.joint_angles(), self.left_goal,
+                                         self.map_point_to_wavefront_index)
             if left_rrt:
                 for node in left_rrt.nodes:
-                    self.move_to_joint_positions(node, "left")
+                    self.check_and_execute_goal_angles(node, "left")
                 self.left_arm.set_joint_position_speed(0.0)
 
             # right_rrt = None
@@ -192,32 +194,36 @@ class Merry:
             #     self.right_arm.set_joint_position_speed(0.0)
         return 0
 
-    def map_point_to_wavefront_rank(self, curr_point, side, step_size=0.1):
+    def map_point_to_wavefront_index(self, curr_point, side, step_size=0.1):
         # points are np arrays
         goal_point = self.get_goal_point(side)
-        dist = np.linalg.norm(goal_point-curr_point)
-        rank = dist / step_size
-        return rank
+        if goal_point:
+            dist = np.linalg.norm(goal_point-curr_point)
+            rank = dist / step_size
+            return rank
+        else:
+            return 0
 
     def create_obstacle_wave_maps(self):
+        # wave maps are lists of lists, indexed by distance step from goal point for each side
         closest_points = self.closest_points
         left_obstacle_waves = list()
         right_obstacle_waves = list()
         # do left goal distance mapping first
         for point in closest_points:
-            indx = self.map_point_to_wavefront_rank(point, self.left_goal)
-            if left_obstacle_waves[indx]:
+            indx = self.map_point_to_wavefront_index(point, self.left_goal)
+            if len(left_obstacle_waves) > indx:
                 left_obstacle_waves[indx].append(point)
             else:
-                left_obstacle_waves[indx] = [point]
+                left_obstacle_waves.append([point])
 
         # do right goal distance mapping second
         for point in closest_points:
-            indx = self.map_point_to_wavefront_rank(point, self.right_goal)
-            if right_obstacle_waves[indx]:
+            indx = self.map_point_to_wavefront_index(point, self.right_goal)
+            if len(right_obstacle_waves) > indx:
                 right_obstacle_waves[indx].append(point)
             else:
-                right_obstacle_waves[indx] = [point]
+                right_obstacle_waves.append([point])
 
         self.left_obstacle_waves = left_obstacle_waves
         self.right_obstacle_waves = right_obstacle_waves
@@ -257,20 +263,6 @@ class Merry:
             self.left_goal = goal
         else:
             rospy.loginfo("got singular end-point goal")
-
-    def check_and_execute_goal_angles(self, goal_angles, side):
-        status = ERROR
-        if goal_angles is not None:
-            rospy.loginfo("got joint angles to execute!")
-            rospy.loginfo("goal angles: " + str(goal_angles))
-            joint_positions = goal_angles
-            # joint_positions = self.get_angles_dict(goal_angles, side)
-            print joint_positions
-            # set the goal joint angles to reach the desired goal
-            status = self.move_to_joint_positions(joint_positions, side, True)
-            if status is ERROR:
-                rospy.logerr("could not set joint positions for ik solver...")
-        return status
 
     def get_joint_angles(self, side="right"):
         """Gets the joint angle dictionary of the specified arm side."""
