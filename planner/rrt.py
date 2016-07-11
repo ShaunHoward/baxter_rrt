@@ -86,9 +86,8 @@ class RRT:
         q_old_angles = np.array(q_old.values())
         first = True
         q_new = q_old.copy()
-        q_new_angles = q_old_angles.copy()
         Q_new = []
-        while first or self._dist_to_goal(q_new_angles) > dist_thresh:
+        while first or self._dist_to_goal(self.fwd_kin(q_new)) > dist_thresh:
             if first:
                 first = False
             J_T = self.jacobian_transpose(q_old)
@@ -100,6 +99,7 @@ class RRT:
             q_new_angles = q_old_angles + d_q
             q_new = wrap_angles_in_dict(q_new_angles, q_old.keys())
             if self.collision_free(q_new, obstacle_waves, obs_mapping_fn):
+                print "curr dist to goal: " + str(self._dist_to_goal(self.fwd_kin(q_new)))
                 Q_new.append(wrap_angles_in_dict(q_new_angles, q_old.keys()))
             else:
                 break
@@ -129,6 +129,7 @@ class RRT:
                 if solved:
                     q_new = wrap_angles_in_dict(q_new_angles, self.curr_node().keys())
                     if self.collision_free(q_new, obstacle_waves, obs_mapping_fn):
+                        print "curr dist to goal: " + str(self._dist_to_goal(self.fwd_kin(q_new)))
                         Q_new.append(q_new)
                     else:
                         break

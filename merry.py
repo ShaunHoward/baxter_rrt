@@ -222,7 +222,6 @@ class Merry:
         max_dist = 0
         # do left goal distance mapping first
         for point in closest_points:
-
             left_goal_point = self.left_goal[:3]
             indx = self.map_point_to_wavefront_index(point, left_goal_point)
             if len(left_obstacle_waves) > indx:
