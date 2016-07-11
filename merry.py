@@ -171,7 +171,7 @@ class Merry:
         while rrt.dist_to_goal() > dist_thresh:
             p = random.uniform(0, 1)
             if p < p_goal:
-                rrt.extend_toward_goal(side, self.get_obs_for_side(side), obs_mapping_fn)
+                rrt.extend_toward_goal(self.get_obs_for_side(side), obs_mapping_fn)
             else:
                 rrt.ik_extend_randomly(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
         return rrt
@@ -186,7 +186,7 @@ class Merry:
         """
         while True:
             left_rrt = None
-            if self.left_goal:
+            if self.left_goal is not None:
                 left_rrt = self.grow_rrt("left", self.left_arm.joint_angles(), self.left_goal,
                                          self.map_point_to_wavefront_index)
             if left_rrt:
@@ -195,7 +195,7 @@ class Merry:
                 self.left_arm.set_joint_position_speed(0.0)
 
             # right_rrt = None
-            # if self.right_goal:
+            # if self.right_goal is not None:
             #     right_rrt = self.grow_rrt("right", self.right_arm.endpoint_pose(), self.right_goal)
             #
             # if right_rrt:
@@ -204,13 +204,12 @@ class Merry:
             #     self.right_arm.set_joint_position_speed(0.0)
         return 0
 
-    def map_point_to_wavefront_index(self, curr_point, side, step_size=0.1):
+    def map_point_to_wavefront_index(self, curr_point, goal_point, step_size=0.1):
         # points are np arrays
-        goal_point = self.get_goal_point(side)
-        if goal_point:
-            dist = np.linalg.norm(goal_point-curr_point)
+        if goal_point is not None:
+            dist = np.linalg.norm(goal_point - curr_point)
             rank = dist / step_size
-            return rank
+            return int(math.floor(rank))
         else:
             return 0
 
@@ -219,9 +218,13 @@ class Merry:
         closest_points = self.closest_points
         left_obstacle_waves = list()
         right_obstacle_waves = list()
+        min_dist = 1000000
+        max_dist = 0
         # do left goal distance mapping first
         for point in closest_points:
-            indx = self.map_point_to_wavefront_index(point, self.left_goal)
+
+            left_goal_point = self.left_goal[:3]
+            indx = self.map_point_to_wavefront_index(point, left_goal_point)
             if len(left_obstacle_waves) > indx:
                 left_obstacle_waves[indx].append(point)
             else:
@@ -229,7 +232,8 @@ class Merry:
 
         # do right goal distance mapping second
         for point in closest_points:
-            indx = self.map_point_to_wavefront_index(point, self.right_goal)
+            right_goal_point = self.right_goal[:3]
+            indx = self.map_point_to_wavefront_index(point, right_goal_point)
             if len(right_obstacle_waves) > indx:
                 right_obstacle_waves[indx].append(point)
             else:
@@ -265,7 +269,7 @@ class Merry:
     def interactive_marker_cb(self, feedback):
         # store feedback pose as goal
         goal = feedback.pose
-        h.pose_to_ndarray(goal)
+        goal = h.pose_to_ndarray(goal)
 
         # set right or left goal depending on marker name
         if "right" in feedback.marker_name:
