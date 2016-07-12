@@ -17,6 +17,7 @@ from urdf_parser_py.urdf import URDF
 import helpers as h
 from hrl_geom.pose_converter import PoseConv
 
+
 def dict_to_pose(q_dict):
     pose = Pose()
     keys = q_dict.keys()
@@ -30,6 +31,24 @@ def dict_to_pose(q_dict):
     return pose
 
 
+def list_to_pose(q_list):
+    pose = Pose()
+    if len(q_list) >= 2:
+        pose.position.x = q_list[0]
+        pose.position.y = q_list[1]
+        pose.position.z = q_list[2]
+    else:
+        pose.position = None
+    if len(q_list) == 7:
+        pose.orientation.x = q_list[3]
+        pose.orientation.x = q_list[4]
+        pose.orientation.x = q_list[5]
+        pose.orientation.x = q_list[6]
+    else:
+        pose.orientation = None
+    return pose
+
+
 class KDLIKSolver:
     def __init__(self, limb):
         self._baxter = URDF.from_parameter_server(key='robot_description')
@@ -37,9 +56,8 @@ class KDLIKSolver:
         self._tip_link = limb + '_gripper'
         self.solver = kin(self._baxter, self._base_link, self._tip_link)
 
-    def solve(self, q_dict):
-        pose = dict_to_pose(q_dict)
-        return self.solver.inverse(pose)
+    def solve(self, q_list):
+        return self.solver.inverse(q_list[:3], q_list[3:])
 
     def solve_fwd_kin(self, q_dict):
         pos, rot = self.solver.FK(q_dict.values())
