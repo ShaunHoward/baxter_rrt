@@ -170,8 +170,8 @@ class Merry:
         rrt = RRT(q_start, x_goal, self.get_kin(side), side)
         while rrt.dist_to_goal() > dist_thresh:
             p = random.uniform(0, 1)
-            if p < p_goal:
-                rrt.extend_toward_goal(self.get_obs_for_side(side), obs_mapping_fn)
+            if p >= p_goal:
+                rrt.extend_toward_goal(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
             else:
                 rrt.ik_extend_randomly(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
         return rrt
