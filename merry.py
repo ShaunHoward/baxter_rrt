@@ -9,8 +9,8 @@ import rospy
 import sys
 import tf
 
-from baxter_pykdl import baxter_kinematics
-
+#from baxter_pykdl import baxter_kinematics
+from solver.ik_solver import KDLIKSolver
 
 from geometry_msgs.msg import (
     PoseStamped,
@@ -22,7 +22,7 @@ from geometry_msgs.msg import (
 from planner.rrt import RRT
 from sensor_msgs import point_cloud2 as pc2
 from sensor_msgs.msg import JointState
-from solver.ik_solver import IKSolver
+from solver.ik_solver import RethinkIKSolver
 from visualization_msgs.msg import InteractiveMarkerFeedback
 
 __author__ = 'shaun howard'
@@ -78,9 +78,9 @@ class Merry:
 
         # self.kmeans = h.get_kmeans_instance(self)
 
-        self.left_kinematics = baxter_kinematics("left")
+        self.left_kinematics = KDLIKSolver("left")  # baxter_kinematics("left")
 
-        self.right_kinematics = baxter_kinematics("right")
+        self.right_kinematics = KDLIKSolver("right")  # baxter_kinematics("right")
 
         rospy.on_shutdown(self.clean_shutdown)
 
@@ -166,7 +166,7 @@ class Merry:
         else:
             return self.right_kinematics
 
-    def grow_rrt(self, side, q_start, x_goal, obs_mapping_fn, dist_thresh=0.1, p_goal=0.5):
+    def grow_rrt(self, side, q_start, x_goal, obs_mapping_fn, dist_thresh=0.5, p_goal=0.5):
         rrt = RRT(q_start, x_goal, self.get_kin(side), side)
         while rrt.dist_to_goal() > dist_thresh:
             p = random.uniform(0, 1)
@@ -220,23 +220,24 @@ class Merry:
         right_obstacle_waves = list()
         min_dist = 1000000
         max_dist = 0
-        # do left goal distance mapping first
-        for point in closest_points:
-            left_goal_point = self.left_goal[:3]
-            indx = self.map_point_to_wavefront_index(point, left_goal_point)
-            if len(left_obstacle_waves) > indx:
-                left_obstacle_waves[indx].append(point)
-            else:
-                left_obstacle_waves.append([point])
-
-        # do right goal distance mapping second
-        for point in closest_points:
-            right_goal_point = self.right_goal[:3]
-            indx = self.map_point_to_wavefront_index(point, right_goal_point)
-            if len(right_obstacle_waves) > indx:
-                right_obstacle_waves[indx].append(point)
-            else:
-                right_obstacle_waves.append([point])
+        if self.left_goal is not None:
+            # do left goal distance mapping first
+            for point in closest_points:
+                left_goal_point = self.left_goal[:3]
+                indx = self.map_point_to_wavefront_index(point, left_goal_point)
+                if len(left_obstacle_waves) > indx:
+                    left_obstacle_waves[indx].append(point)
+                else:
+                    left_obstacle_waves.append([point])
+        if self.right_goal is not None:
+            # do right goal distance mapping second
+            for point in closest_points:
+                right_goal_point = self.right_goal[:3]
+                indx = self.map_point_to_wavefront_index(point, right_goal_point)
+                if len(right_obstacle_waves) > indx:
+                    right_obstacle_waves[indx].append(point)
+                else:
+                    right_obstacle_waves.append([point])
 
         self.left_obstacle_waves = left_obstacle_waves
         self.right_obstacle_waves = right_obstacle_waves

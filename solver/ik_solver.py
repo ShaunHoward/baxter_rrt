@@ -6,12 +6,45 @@ from baxter_core_msgs.srv import (
     SolvePositionIKRequest,
 )
 from geometry_msgs.msg import (
+    Pose,
     PoseStamped
 )
 from std_msgs.msg import Header
 
+from baxter_kdl.kdl_kinematics import KDLKinematics as kin
+from urdf_parser_py.urdf import URDF
 
-class IKSolver:
+
+def dict_to_pose(q_dict):
+    pose = Pose()
+    keys = q_dict.keys()
+    pose.position.x = q_dict[keys[0]]
+    pose.position.y = q_dict[keys[1]]
+    pose.position.z = q_dict[keys[2]]
+    pose.orientation.x = q_dict[keys[3]]
+    pose.orientation.x = q_dict[keys[4]]
+    pose.orientation.x = q_dict[keys[5]]
+    pose.orientation.x = q_dict[keys[6]]
+    return pose
+
+
+class KDLIKSolver:
+    def __init__(self, limb):
+        self._baxter = URDF.from_parameter_server(key='robot_description')
+        self._base_link = self._baxter.get_root()
+        self._tip_link = limb + '_gripper'
+        self.solver = kin(self._baxter, self._base_link, self._tip_link)
+
+    def solve(self, q_dict):
+        pose = dict_to_pose(q_dict)
+        return self.solver.inverse(pose)
+
+    def solve_fwd_kin(self, q_dict):
+        pose = dict_to_pose(q_dict)
+        return self.solver.forward(pose)
+
+
+class RethinkIKSolver:
 
     def __init__(self):
         self.r_ns = "ExternalTools/right/PositionKinematicsNode/IKService"
