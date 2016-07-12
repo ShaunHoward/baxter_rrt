@@ -155,10 +155,11 @@ class Merry:
             return None
 
     def get_obs_for_side(self, side):
-        if side == "left":
-            return self.left_obstacle_waves
-        else:
-            return self.right_obstacle_waves
+        return []
+        # if side == "left":
+        #     return self.left_obstacle_waves
+        # else:
+        #     return self.right_obstacle_waves
 
     def get_kin(self, side):
         if side == "left":
@@ -166,7 +167,7 @@ class Merry:
         else:
             return self.right_kinematics
 
-    def grow_rrt(self, side, q_start, x_goal, obs_mapping_fn, dist_thresh=0.5, p_goal=0.5):
+    def grow_rrt(self, side, q_start, x_goal, obs_mapping_fn, dist_thresh=0.2, p_goal=0.5):
         rrt = RRT(q_start, x_goal, self.get_kin(side), side)
         while rrt.dist_to_goal() > dist_thresh:
             p = random.uniform(0, 1)
@@ -193,6 +194,7 @@ class Merry:
                 for node in left_rrt.nodes:
                     self.check_and_execute_goal_angles(node, "left")
                 self.left_arm.set_joint_position_speed(0.0)
+                left_rrt = None
 
             # right_rrt = None
             # if self.right_goal is not None:
