@@ -2,12 +2,12 @@ import numpy as np
 import helpers as h
 
 
-def ik_soln_exists(goal_pos, kin_solver_instance):
+def ik_soln_exists(goal_pose, kin_solver_instance):
     goal_angles = None
-    if goal_pos is not None:
+    if goal_pose is not None:
         # goal = self.generate_goal_pose(side, (goal_pos.x, goal_pos.y, goal_pos.z))
         # do inverse kinematics for cart pose to joint angles, then convert joint angles to joint velocities
-        goal_angles = kin_solver_instance.solve(goal_pos)
+        goal_angles = kin_solver_instance.solve(goal_pose)
     if goal_angles is not None:
         return True, goal_angles
     else:
@@ -63,9 +63,6 @@ class RRT:
     def fwd_kin(self, q_dict):
         return self.kin.solve_fwd_kin(q_dict)
 
-    def jacobian_transpose(self, q_curr_dict):
-        return self.kin.jacobian_transpose(q_curr_dict)
-
     def collision_free(self, q_new, obstacle_waves, obs_mapping_fn, min_thresh=0.05):
         x_new = np.array(self.fwd_kin(q_new)[:3])
         return self._check_collisions(x_new, obstacle_waves, obs_mapping_fn, min_thresh)
@@ -89,10 +86,10 @@ class RRT:
         q_new = q_old.copy()
         Q_new = []
         prev_dist_to_goal = self.dist_to_goal()
-        while first or self._dist_to_goal(self.fwd_kin(q_new)) > dist_thresh:
+        while first or self._dist_to_goal(self.fwd_kin(q_old)) > dist_thresh:
             if first:
                 first = False
-            J_T = self.jacobian_transpose(q_old)
+            J_T = self.kin.jacobian_transpose(q_old_angles)
             x_old = self.fwd_kin(q_old)
             d_x = self.workspace_delta(x_old)
             # TODO fix matrix alignment issues
@@ -105,6 +102,7 @@ class RRT:
                 print "random step: curr dist to goal: " + str(self._dist_to_goal(self.fwd_kin(q_new)))
                 Q_new.append(q_new)
                 q_old = q_new
+                q_old_angles = q_new_angles
                 prev_dist_to_goal = curr_dist_to_goal
             else:
                 break

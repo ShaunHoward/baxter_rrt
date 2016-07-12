@@ -1,3 +1,4 @@
+import numpy as np
 import struct
 
 import rospy
@@ -13,7 +14,8 @@ from std_msgs.msg import Header
 
 from baxter_kdl.kdl_kinematics import KDLKinematics as kin
 from urdf_parser_py.urdf import URDF
-
+import helpers as h
+from hrl_geom.pose_converter import PoseConv
 
 def dict_to_pose(q_dict):
     pose = Pose()
@@ -40,8 +42,12 @@ class KDLIKSolver:
         return self.solver.inverse(pose)
 
     def solve_fwd_kin(self, q_dict):
-        pose = dict_to_pose(q_dict)
-        return self.solver.forward(pose)
+        pos, rot = self.solver.FK(q_dict.values())
+        pose = PoseConv.to_pose_msg(pos, rot)
+        return h.pose_to_ndarray(pose)
+
+    def jacobian_transpose(self, q_list):
+        return self.solver.jacobian(q_list).T
 
 
 class RethinkIKSolver:
