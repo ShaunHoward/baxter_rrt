@@ -101,6 +101,14 @@ import pcl
 - sudo python setup.py install (make sure compiler for make and install are same!!!)
 
 
+# Install kdl libraries
+- cd ~/projects
+- git clone https://github.com/ShaunHoward/baxter_pykdl.git
+- git clone https://github.com/gt-ros-pkg/hrl-kdl.git 
+- cd baxter_pykdl; python setup.py install
+- cd ../hrl-kdl; python setup.py install
+
+
 # install MoveIt! (not required)
 - sudo add-apt-repository ppa:libccd-debs/ppa
 - sudo apt-get update
