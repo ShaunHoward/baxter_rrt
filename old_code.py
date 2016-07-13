@@ -119,7 +119,7 @@ def approach_single_goal(self, side, goal):
     :param goal: 3d goal point in the base frame with x, y, z
     :return: status of attempt to approach the goal point
     """
-    status = OK
+    status = "OK"
     if goal is None:
         if side is "left":
             goal = self.left_goal

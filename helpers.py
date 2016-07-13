@@ -44,6 +44,13 @@ def determine_overall_status(l_status, r_status):
     return status
 
 
+def wrap_angles_in_dict(angles, keys):
+    q_dict = dict()
+    for i in range(len(keys)):
+        q_dict[keys[i]] = angles[i]
+    return q_dict
+
+
 def generate_goal_pose_w_same_orientation(dest_point, endpoint_pose):
     """Uses inverse kinematics to generate joint angles at destination point."""
     ik_pose = Pose()
@@ -110,6 +117,36 @@ def get_critical_points_of_obstacles(merry):
         #         closest_point = p
         #         closest_dist = dist
     return None if not (closest_point and closest_dist) else [(closest_point, closest_dist)]
+
+
+def list_to_pose(q_list):
+    pose = Pose()
+    if len(q_list) >= 2:
+        return get_pose(q_list[0], q_list[1], q_list[2])
+    # else:
+    #     pose.position = None
+    if len(q_list) == 7:
+        pose.orientation.x = q_list[3]
+        pose.orientation.x = q_list[4]
+        pose.orientation.x = q_list[5]
+        pose.orientation.x = q_list[6]
+        return get_pose(q_list[0], q_list[1], q_list[2], q_list[3], q_list[4], q_list[5], q_list[6])
+    # else:
+    #     pose.orientation = None
+    return pose
+
+
+def dict_to_pose(q_dict):
+    pose = Pose()
+    keys = q_dict.keys()
+    pose.position.x = q_dict[keys[0]]
+    pose.position.y = q_dict[keys[1]]
+    pose.position.z = q_dict[keys[2]]
+    pose.orientation.x = q_dict[keys[3]]
+    pose.orientation.x = q_dict[keys[4]]
+    pose.orientation.x = q_dict[keys[5]]
+    pose.orientation.x = q_dict[keys[6]]
+    return pose
 
 
 def get_pose(x, y, z, ox=0, oy=0, oz=0, ow=1):

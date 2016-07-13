@@ -18,49 +18,29 @@ import helpers as h
 from hrl_geom.pose_converter import PoseConv
 
 
-def dict_to_pose(q_dict):
-    pose = Pose()
-    keys = q_dict.keys()
-    pose.position.x = q_dict[keys[0]]
-    pose.position.y = q_dict[keys[1]]
-    pose.position.z = q_dict[keys[2]]
-    pose.orientation.x = q_dict[keys[3]]
-    pose.orientation.x = q_dict[keys[4]]
-    pose.orientation.x = q_dict[keys[5]]
-    pose.orientation.x = q_dict[keys[6]]
-    return pose
+def get_min_joints():
+        return np.array([-3.059, -1.57079632679, -3.059, -0.05, -3.05417993878, -2.147, -1.70167993878])
 
 
-def list_to_pose(q_list):
-    pose = Pose()
-    if len(q_list) >= 2:
-        pose.position.x = q_list[0]
-        pose.position.y = q_list[1]
-        pose.position.z = q_list[2]
-    else:
-        pose.position = None
-    if len(q_list) == 7:
-        pose.orientation.x = q_list[3]
-        pose.orientation.x = q_list[4]
-        pose.orientation.x = q_list[5]
-        pose.orientation.x = q_list[6]
-    else:
-        pose.orientation = None
-    return pose
+def get_max_joints():
+        return np.array([3.059, 2.094, 3.059, 2.618, 3.05417993878, 1.047, 1.70167993878])
 
 
 class KDLIKSolver:
     def __init__(self, limb):
         self._baxter = URDF.from_parameter_server(key='robot_description')
-        self._base_link = self._baxter.get_root()
+        self._base_link = "base"
         self._tip_link = limb + '_gripper'
         self.solver = kin(self._baxter, self._base_link, self._tip_link)
+        self.min_joins = get_min_joints()
+        self.max_joints = get_max_joints()
 
-    def solve(self, q_list):
-        return self.solver.inverse(q_list[:3], q_list[3:])
+    def solve(self, position, orientation):
+        return self.solver.inverse((position.x, position.y, position.z),
+                                   (orientation.x, orientation.y, orientation.z, orientation.w))
 
-    def solve_fwd_kin(self, q_dict):
-        pos, rot = self.solver.FK(q_dict.values())
+    def solve_fwd_kin(self, q_list):
+        pos, rot = self.solver.FK(q_list)
         pose = PoseConv.to_pose_msg(pos, rot)
         return h.pose_to_ndarray(pose)
 
@@ -78,6 +58,7 @@ class RethinkIKSolver:
         self.l_iksvc = rospy.ServiceProxy(self.l_ns, SolvePositionIK)
 
     def solve(self, limb, pose):
+        # pose = h.list_to_pose(pose_arr)
         ikreq = SolvePositionIKRequest()
         hdr = Header(stamp=rospy.Time.now(), frame_id='base')
         pose = PoseStamped(header=hdr, pose=pose)
