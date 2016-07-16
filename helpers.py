@@ -51,18 +51,18 @@ def wrap_angles_in_dict(angles, keys):
     return q_dict
 
 
-def generate_goal_pose_w_same_orientation(dest_point, endpoint_pose):
+def generate_goal_pose_w_same_orientation(dest_point, endpoint_orientaton):
     """Uses inverse kinematics to generate joint angles at destination point."""
     ik_pose = Pose()
     ik_pose.position.x = dest_point[0]
     ik_pose.position.y = dest_point[1]
     ik_pose.position.z = dest_point[2]
-    current_pose = endpoint_pose
-    if current_pose:
-        ik_pose.orientation.x = current_pose['orientation'].x
-        ik_pose.orientation.y = current_pose['orientation'].y
-        ik_pose.orientation.z = current_pose['orientation'].z
-        ik_pose.orientation.w = current_pose['orientation'].w
+    o = endpoint_orientaton
+    if o is not None:
+        ik_pose.orientation.x = o.x
+        ik_pose.orientation.y = o.y
+        ik_pose.orientation.z = o.z
+        ik_pose.orientation.w = o.w
     return ik_pose
 
 

@@ -1,16 +1,15 @@
 import numpy as np
 import helpers as h
-from solver.ik_solver import RethinkIKSolver
+from solver.ik_solver import KDLIKSolver
 
 
-def ik_soln_exists(goal_pose, kin_solver_instance):
+def ik_soln_exists(goal_pose, kin):
     goal_angles = None
     if goal_pose is not None:
-        # goal = self.generate_goal_pose(side, (goal_pos.x, goal_pos.y, goal_pos.z))
-        # do inverse kinematics for cart pose to joint angles, then convert joint angles to joint velocities
-        ik_solver = RethinkIKSolver()
-        goal_angles = ik_solver.solve("left", goal_pose)
-        # goal_angles = kin_solver_instance.solve(goal_pose)
+        print "approaching single goal..."
+        goal_angles = None
+        if goal_pose:
+            goal_angles = kin.solve(position=goal_pose.position, orientation=goal_pose.orientation)
     if goal_angles is not None:
         return True, goal_angles
     else:
@@ -20,10 +19,11 @@ def ik_soln_exists(goal_pose, kin_solver_instance):
 class RRT:
     # one-way RRT
 
-    def __init__(self, q_start, x_goal, kin_solver, side):
+    def __init__(self, q_start, p_goal, kin_solver, side):
         self.kin = kin_solver
         self.q_start = q_start
-        self.x_goal = x_goal
+        self.x_goal = h.pose_to_ndarray(p_goal)
+        self.p_goal = p_goal
         self.nodes = []
         self.side = side
 
@@ -35,6 +35,9 @@ class RRT:
             return self.q_start
         return self.nodes[-1]
 
+    def goal_pose(self):
+        return self.p_goal
+
     def goal_node(self):
         return self.x_goal
 
@@ -42,7 +45,7 @@ class RRT:
         return self.goal_node()[:3]
 
     def dist(self, start, stop):
-        return np.linalg.norm(stop - start)
+        return np.linalg.norm(stop[:3] - start[:3])
 
     def _dist_to_goal(self, curr):
         return self.dist(curr, self.goal_node())
@@ -80,7 +83,7 @@ class RRT:
         first = True
         Q_new = []
         prev_dist_to_goal = self.dist_to_goal()
-        while first or self._dist_to_goal(self.fwd_kin(q_old)) > dist_thresh:
+        while first or prev_dist_to_goal > dist_thresh:
             if first:
                 first = False
             J_T = self.kin.jacobian_transpose(q_old)
@@ -101,38 +104,40 @@ class RRT:
                 break
         self.add_nodes(Q_new)
 
-    def ik_extend_randomly(self, curr_pos, obstacle_waves, obs_mapping_fn, dist_thresh, offset=0.2):
+    def ik_extend_randomly(self, curr_pos, obstacle_waves, obs_mapping_fn, dist_thresh, offset=0.05):
         # returns the nearest distance to goal from the last node added by this method
         # only add one node via random soln for now
         # x_curr = self.fwd_kin(self.closest_node_to_goal())
-        goal = self.goal_node()
-        first = True
+        goal_arr = self.goal_node()
+        goal_pose = self.goal_pose()
+        # first = True
         Q_new = []
         prev_dist_to_goal = self.dist_to_goal()
-        while np.linalg.norm(goal[:3]-curr_pos) > dist_thresh: # first or self._dist_to_goal(x_curr) > dist_thresh:
+        while prev_dist_to_goal > dist_thresh:  # first or self._dist_to_goal(x_curr) > dist_thresh:
             # if first:
             #     first = False
             next_point = []
             for i in range(3):
                 curr_coord = curr_pos[i]
-                goal_coord = goal[i]
+                goal_coord = goal_arr[i]
                 if curr_coord < goal_coord:
                     next_point.append(h.generate_random_decimal(curr_coord-offset, goal_coord+offset))
                 else:
                     next_point.append(h.generate_random_decimal(goal_coord-offset, curr_coord+offset))
 
             #if self._check_collisions(next_point, obstacle_waves, obs_mapping_fn, dist_thresh):
-            solved, q_new = ik_soln_exists(next_point, self.kin)
+            next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
+            solved, q_new = ik_soln_exists(next_pose, self.kin)
             if solved:
-                # q_new = wrap_angles_in_dict(q_new_angles, self.curr_node().keys())
-                curr_dist_to_goal = np.linalg.norm(goal[:3]-curr_pos) #self._dist_to_goal(self.fwd_kin(q_new))
-                if curr_dist_to_goal < prev_dist_to_goal: #and self.collision_free(q_new, obstacle_waves,
-                                                         #                        obs_mapping_fn):
-                    curr_pos = next_point
-                    print "ik planner: curr dist to goal: " + str(curr_pos)  # + str(self._dist_to_goal(self.fwd_kin(q_new)))
-                    Q_new.append(q_new)
-                    #x_curr = self.fwd_kin(q_new)
-                    prev_dist_to_goal = curr_dist_to_goal
-                else:
-                    break
+                # # q_new = wrap_angles_in_dict(q_new_angles, self.curr_node().keys())
+                curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))  #self._dist_to_goal(self.fwd_kin(q_new))
+                # if curr_dist_to_goal < prev_dist_to_goal: #and self.collision_free(q_new, obstacle_waves,
+                #                                          #                        obs_mapping_fn):
+                curr_pos = next_point
+                print "ik planner: curr dist to goal: " + str(curr_pos)  # + str(self._dist_to_goal(self.fwd_kin(q_new)))
+                Q_new.append(q_new)
+                #x_curr = self.fwd_kin(q_new)
+                prev_dist_to_goal = curr_dist_to_goal
+            else:
+                break
         self.add_nodes(Q_new)

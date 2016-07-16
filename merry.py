@@ -78,9 +78,9 @@ class Merry:
 
         # self.kmeans = h.get_kmeans_instance(self)
 
-        self.left_kinematics = None#KDLIKSolver("left")  # baxter_kinematics("left")
+        self.left_kinematics = KDLIKSolver("left")
 
-        self.right_kinematics = None# KDLIKSolver("right")  # baxter_kinematics("right")
+        self.right_kinematics = KDLIKSolver("right")
 
         rospy.on_shutdown(self.clean_shutdown)
 
@@ -167,17 +167,16 @@ class Merry:
         else:
             return self.right_kinematics
 
-    def grow_rrt(self, side, q_start, x_goal, obs_mapping_fn, dist_thresh=0.2, p_goal=0.5):
-        rrt = RRT(q_start, x_goal, self.get_kin(side), side)
-       # while rrt.dist_to_goal() > dist_thresh:
-        p = random.uniform(0, 1)
-        if p >= p_goal:
-            #rrt.extend_toward_goal(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
-            pass
-        else:
-            #pass
-            pos = self.left_arm.endpoint_pose()["position"]
-            rrt.ik_extend_randomly(np.array(pos), self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
+    def grow_rrt(self, side, q_start, goal_pose, obs_mapping_fn, dist_thresh=0.2, p_goal=0.5):
+        rrt = RRT(q_start, goal_pose, self.get_kin(side), side)
+        while rrt.dist_to_goal() > dist_thresh:
+            p = random.uniform(0, 1)
+            if p >= p_goal:
+                #rrt.extend_toward_goal(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
+                pass
+            else:
+                pos = self.left_arm.endpoint_pose()["position"]
+                rrt.ik_extend_randomly(np.array(pos), self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
         return rrt
 
     def get_goal(self, side):
@@ -187,11 +186,11 @@ class Merry:
             goal = self.right_goal
         return goal
 
-    def approach_single_goal(self, side):
+    def approach_single_goal(self, side, kin):
         """
         Attempts to successfully visit the goal point using the IK solver.
         :param side: the arm side to use
-        :param goal: 3d goal point in the base frame with x, y, z
+        :param kin: the KDLIKSolver instance
         :return: status of attempt to approach the goal point
         """
         status = OK
@@ -200,7 +199,6 @@ class Merry:
 
         # approach the goal points
         goal_met = False
-        kin = KDLIKSolver(side)
         print "approaching single goal..."
         while goal_met is False and status is OK:
             goal = self.get_goal(side)
@@ -218,9 +216,6 @@ class Merry:
             else:
                 goal_met = True
 
-            if obstacles is not None:
-                # apply obstacle avoidance
-                pass
             # execute goal angles if they are available
             if goal_angles is not None:
                 angles_dict = h.wrap_angles_in_dict(goal_angles, self.left_arm.joint_names())
@@ -241,18 +236,14 @@ class Merry:
             left_rrt = None
             if self.left_goal is not None:
                 print "goal: " + str(self.left_goal)
-                status = self.approach_single_goal("left")
-                print "actual: " + str(self.left_arm.endpoint_pose())
-                # left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
-                # # left_joint_angles = list(reversed(left_joint_angles))
-                # left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal,
-                #                          self.map_point_to_wavefront_index)
-            # if left_rrt:
-            #     for node in left_rrt.nodes:
-            #         node_angle_dict = h.wrap_angles_in_dict(node, list(reversed(self.left_arm.joint_names())))
-            #         self.check_and_execute_goal_angles(node_angle_dict, "left")
-            #     self.left_arm.set_joint_position_speed(0.0)
-            #     left_rrt = None
+                left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
+                left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal,
+                                         self.map_point_to_wavefront_index)
+            if left_rrt:
+                for node in left_rrt.nodes:
+                    node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
+                    self.check_and_execute_goal_angles(node_angle_dict, "left")
+            self.left_arm.set_joint_position_speed(0.0)
 
             # right_rrt = None
             # if self.right_goal is not None:
@@ -280,24 +271,24 @@ class Merry:
         right_obstacle_waves = list()
         min_dist = 1000000
         max_dist = 0
-        if self.left_goal is not None:
+        if self.left_goal_arr is not None:
             # do left goal distance mapping first
             for point in closest_points:
-                left_goal_point = self.left_goal[:3]
+                left_goal_point = self.left_goal_arr[:3]
                 indx = self.map_point_to_wavefront_index(point, left_goal_point)
                 if len(left_obstacle_waves) > indx:
                     left_obstacle_waves[indx].append(point)
                 else:
                     left_obstacle_waves.append([point])
-        if self.right_goal is not None:
-            # do right goal distance mapping second
-            for point in closest_points:
-                right_goal_point = self.right_goal[:3]
-                indx = self.map_point_to_wavefront_index(point, right_goal_point)
-                if len(right_obstacle_waves) > indx:
-                    right_obstacle_waves[indx].append(point)
-                else:
-                    right_obstacle_waves.append([point])
+        # if self.right_goal_arr is not None:
+        #     # do right goal distance mapping second
+        #     for point in closest_points:
+        #         right_goal_point = self.right_goal_arr[:3]
+        #         indx = self.map_point_to_wavefront_index(point, right_goal_point)
+        #         if len(right_obstacle_waves) > indx:
+        #             right_obstacle_waves[indx].append(point)
+        #         else:
+        #             right_obstacle_waves.append([point])
 
         self.left_obstacle_waves = left_obstacle_waves
         self.right_obstacle_waves = right_obstacle_waves
@@ -334,8 +325,10 @@ class Merry:
         # set right or left goal depending on marker name
         if "right" in feedback.marker_name:
             self.right_goal = goal
+            self.right_goal_arr = h.pose_to_ndarray(goal)
         elif "left" in feedback.marker_name:
             self.left_goal = goal
+            self.left_goal_arr = h.pose_to_ndarray(goal)
         else:
             rospy.loginfo("got singular end-point goal")
 

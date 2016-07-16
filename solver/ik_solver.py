@@ -40,9 +40,7 @@ class KDLIKSolver:
                                    (orientation.x, orientation.y, orientation.z, orientation.w))
 
     def solve_fwd_kin(self, q_list):
-        pos, rot = self.solver.FK(q_list)
-        pose = PoseConv.to_pose_msg(pos, rot)
-        return h.pose_to_ndarray(pose)
+        return self.solver.forward(q_list)
 
     def jacobian_transpose(self, q_list):
         return self.solver.jacobian(q_list).T
