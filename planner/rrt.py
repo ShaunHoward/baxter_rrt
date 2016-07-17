@@ -6,7 +6,6 @@ from solver.ik_solver import KDLIKSolver
 def ik_soln_exists(goal_pose, kin):
     goal_angles = None
     if goal_pose is not None:
-        print "approaching single goal..."
         goal_angles = None
         if goal_pose:
             goal_angles = kin.solve(position=goal_pose.position, orientation=goal_pose.orientation)

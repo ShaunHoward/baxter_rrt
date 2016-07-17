@@ -172,8 +172,7 @@ class Merry:
         while rrt.dist_to_goal() > dist_thresh:
             p = random.uniform(0, 1)
             if p >= p_goal:
-                #rrt.extend_toward_goal(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
-                pass
+                rrt.extend_toward_goal(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
             else:
                 pos = self.left_arm.endpoint_pose()["position"]
                 rrt.ik_extend_randomly(np.array(pos), self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
@@ -199,7 +198,6 @@ class Merry:
 
         # approach the goal points
         goal_met = False
-        print "approaching single goal..."
         while goal_met is False and status is OK:
             goal = self.get_goal(side)
             obstacles = None
