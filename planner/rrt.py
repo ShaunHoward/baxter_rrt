@@ -88,7 +88,6 @@ class RRT:
             J_T = self.kin.jacobian_transpose(q_old)
             x_old = self.fwd_kin(q_old)
             d_x = self.workspace_delta(x_old)
-            # TODO fix matrix alignment issues
             d_q = np.dot(J_T, d_x).tolist()
             d_q = np.array(d_q[0])
             q_new = q_old + d_q
@@ -103,18 +102,15 @@ class RRT:
                 break
         self.add_nodes(Q_new)
 
-    def ik_extend_randomly(self, curr_pos, obstacle_waves, obs_mapping_fn, dist_thresh, offset=0.05):
+    def ik_extend_randomly(self, curr_pos, obstacle_waves, obs_mapping_fn, dist_thresh, offset=0.1):
         # returns the nearest distance to goal from the last node added by this method
         # only add one node via random soln for now
-        # x_curr = self.fwd_kin(self.closest_node_to_goal())
         goal_arr = self.goal_node()
         goal_pose = self.goal_pose()
         # first = True
         Q_new = []
         prev_dist_to_goal = self.dist_to_goal()
-        while prev_dist_to_goal > dist_thresh:  # first or self._dist_to_goal(x_curr) > dist_thresh:
-            # if first:
-            #     first = False
+        while prev_dist_to_goal > dist_thresh:
             next_point = []
             for i in range(3):
                 curr_coord = curr_pos[i]
@@ -128,14 +124,10 @@ class RRT:
             next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
             solved, q_new = ik_soln_exists(next_pose, self.kin)
             if solved:
-                # # q_new = wrap_angles_in_dict(q_new_angles, self.curr_node().keys())
-                curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))  #self._dist_to_goal(self.fwd_kin(q_new))
-                # if curr_dist_to_goal < prev_dist_to_goal: #and self.collision_free(q_new, obstacle_waves,
-                #                                          #                        obs_mapping_fn):
+                curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
                 curr_pos = next_point
-                print "ik planner: curr dist to goal: " + str(curr_pos)  # + str(self._dist_to_goal(self.fwd_kin(q_new)))
+                print "ik planner: curr dist to goal: " + str(self._dist_to_goal(self.fwd_kin(q_new)))
                 Q_new.append(q_new)
-                #x_curr = self.fwd_kin(q_new)
                 prev_dist_to_goal = curr_dist_to_goal
             else:
                 break
