@@ -243,14 +243,15 @@ class Merry:
                     self.check_and_execute_goal_angles(node_angle_dict, "left")
             self.left_arm.set_joint_position_speed(0.0)
 
-            # right_rrt = None
-            # if self.right_goal is not None:
-            #     right_rrt = self.grow_rrt("right", self.right_arm.endpoint_pose(), self.right_goal)
-            #
-            # if right_rrt:
-            #     for node in right_rrt.nodes:
-            #         self.move_to_joint_positions(node, "right")
-            #     self.right_arm.set_joint_position_speed(0.0)
+            right_rrt = None
+            if self.right_goal is not None:
+                right_rrt = self.grow_rrt("right", self.right_arm.endpoint_pose(), self.right_goal,
+                                          self.map_point_to_wavefront_index)
+
+            if right_rrt:
+                for node in right_rrt.nodes:
+                    self.move_to_joint_positions(node, "right")
+                self.right_arm.set_joint_position_speed(0.0)
         return 0
 
     def map_point_to_wavefront_index(self, curr_point, goal_point, step_size=0.1):
@@ -274,19 +275,19 @@ class Merry:
             for point in closest_points:
                 left_goal_point = self.left_goal_arr[:3]
                 indx = self.map_point_to_wavefront_index(point, left_goal_point)
-                if len(left_obstacle_waves) > indx:
-                    left_obstacle_waves[indx].append(point)
-                else:
-                    left_obstacle_waves.append([point])
-        # if self.right_goal_arr is not None:
-        #     # do right goal distance mapping second
-        #     for point in closest_points:
-        #         right_goal_point = self.right_goal_arr[:3]
-        #         indx = self.map_point_to_wavefront_index(point, right_goal_point)
-        #         if len(right_obstacle_waves) > indx:
-        #             right_obstacle_waves[indx].append(point)
-        #         else:
-        #             right_obstacle_waves.append([point])
+                # if len(left_obstacle_waves) > indx:
+                #     left_obstacle_waves[indx].append(point)
+                # else:
+                #     left_obstacle_waves.append([point])
+        if self.right_goal_arr is not None:
+            # do right goal distance mapping second
+            for point in closest_points:
+                right_goal_point = self.right_goal_arr[:3]
+                indx = self.map_point_to_wavefront_index(point, right_goal_point)
+                # if len(right_obstacle_waves) > indx:
+                #     right_obstacle_waves[indx].append(point)
+                # else:
+                #     right_obstacle_waves.append([point])
 
         self.left_obstacle_waves = left_obstacle_waves
         self.right_obstacle_waves = right_obstacle_waves
