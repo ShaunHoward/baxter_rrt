@@ -195,7 +195,7 @@ def get_kmeans_instance(merry, num_clusts=10):
     return kmeans
 
 
-def lookup_transform(tf_, from_frame="kinect_link", to_frame="right_gripper"):
+def lookup_transform(tf_, from_frame, to_frame):
     """"
     :return: a set of points converted from_frame to_frame.
     """
@@ -222,16 +222,6 @@ def transform_pcl2(tf_, target_frame, source_frame, point_cloud, duration=2):
         return [Point(*(tuple(np.dot(mat44, np.array([p[0], p[1], p[2], 1.0])))[:3])) for p in point_cloud]
     else:
         return []
-
-
-def transform_points(tf, points, source="right_gripper", dest="base"):
-    """
-    Converts a given list of points into the specified dest. frame from the specified source frame.
-    :return: points numpy array
-    """
-    transformed_points = transform_pcl2(tf, dest, source, points, 3)
-    rospy.loginfo(''.join(["got a transformed cloud w/ mapping from ", source, " to ", dest, "!!"]))
-    return transformed_points
 
 # def move_to_start(self, start_angles=None):
 #     print("Moving the {0} arm to start pose...".format(self._limb))

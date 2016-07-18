@@ -24,30 +24,30 @@ class KinectTransformer:
         obstacle_cloud = PointCloud()
         header = std_msgs.msg.Header()
         header.stamp = rospy.Time.now()
-        header.frame_id = 'base'
+        header.frame_id = 'kinect_link'
         obstacle_cloud.header = header
         for point in points:
-            obs_pt = Point32(point[0], point[1], point[2])
-            obstacle_cloud.points.append(obs_pt)
+            obstacle_cloud.points.append(Point32(*point))
         print "publishing new obstacle clouds!"
         self.left_obs_pub.publish(obstacle_cloud)
         self.right_obs_pub.publish(obstacle_cloud)
 
-    def kinect_cb(self, data, source="kinect_link", dest="base", min_dist=0.1, max_dist=2, min_height=0.4):
+    def kinect_cb(self, data, source="kinect_link", dest="base", min_dist=0.1, max_dist=1.5, min_height=0.4):
         """
         Receives kinect points from the kinect subscriber linked to the publisher stream.
         :return: kinect points numpy array
         """
         # TODO add left and right arm points to filter out of published "obstacles" per side
         points = [p for p in pc2.read_points(data, skip_nans=True, field_names=("x", "y", "z"))]
-        transformed_points = h.transform_pcl2(self.tf, dest, source, points, 3)
-        points_list = []
-        for p in transformed_points:
-            dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)
-            if min_dist < dist < max_dist and p.z >= min_height:
-                points_list.append((dist, p))
-        sorted_pts = np.sort(np.array(points_list), 0)
-        self.closest_points = [point for dist, point in sorted_pts]
+        # transformed_points = h.transform_pcl2(self.tf, dest, source, points)
+        # points_list = []
+        # for p in transformed_points:
+        #     dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)
+        #     if min_dist < dist < max_dist and p.z >= min_height:
+        #         points_list.append((dist, p))
+        # sorted_pts = np.sort(np.array(points_list), 0)
+        # self.closest_points = [point for dist, point in sorted_pts]
+        self.closest_points = points
         self.build_point_cloud(self.closest_points)
         # self.create_obstacle_wave_maps()
         # if self.left_rrt:

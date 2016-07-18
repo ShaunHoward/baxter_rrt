@@ -1,6 +1,5 @@
 import numpy as np
 import helpers as h
-from solver.ik_solver import KDLIKSolver
 
 
 def ik_soln_exists(goal_pose, kin):
@@ -24,6 +23,7 @@ class RRT:
         self.update_goal(p_goal)
         self.nodes = []
         self.side = side
+        # note: obstacles should be and are assumed to be sorted by distance from base link
         self.obstacles = obstacles
         self.joint_names = joint_names
         self.exec_angles_method = exec_angles_method
@@ -70,6 +70,7 @@ class RRT:
         return self.kin.fwd_kin_all(q_list)
 
     def update_obstacles(self, new_obs):
+        # note: obstacles should be and are assumed to be sorted by distance from base link
         self.obstacles = np.mat(new_obs)
 
     def update_goal(self, p_goal):
@@ -78,23 +79,27 @@ class RRT:
         print "updating rrt goal"
 
     def _check_collision(self, x_3x1, avoidance_radius):
-        if len(self.obstacles) > 0:
+        if len(self.obstacles) > 1:
             for obs_point in self.obstacles[:]:
                 dist = np.linalg.norm(obs_point - x_3x1)
-                if dist < avoidance_radius:
-                    print "collisions found for rrt point..."
-                    return False
-        return True
+                if dist > avoidance_radius:
+                    # any obstacles outside of avoidance radius of robot since obstacles are sorted by distance
+                    print "collisions highly unlikely based on closest points and obstacle avoidance radius..."
+                    return True
+        else:
+            # no collisions if no obstacles
+            return True
+        return False
 
     def _check_collisions(self, link_pose_mat, avoidance_radius):
         for link_pose in link_pose_mat:
             # only use x,y,z from link pose
-            x_3x1 = np.array((link_pose[0,0], link_pose[0,1], link_pose[0,2]))
+            x_3x1 = np.array((link_pose[0, 0], link_pose[0, 1], link_pose[0, 2]))
             if not self._check_collision(x_3x1, avoidance_radius):
                 return False
         return True
 
-    def collision_free(self, q_new_angles, avoidance_radius=0.1):
+    def collision_free(self, q_new_angles, avoidance_radius=0.2):
         # get the pose of each link in the arm
         # only take from the second on since the first two are always the same at 0,0,0
         link_pose_matrix = self.fwd_kin_all(q_new_angles)
@@ -146,34 +151,39 @@ class RRT:
         Q_new = []
         prev_dist_to_goal = self.dist_to_goal()
         num_tries_left = 5
+        first = True
         while prev_dist_to_goal > dist_thresh and num_tries_left > 0:
-            print "looking for ik soln..."
-            goal_arr = self.goal_node()
             goal_pose = self.goal_pose()
-            next_point = []
-            for i in range(3):
-                curr_coord = curr_pos[i]
-                goal_coord = goal_arr[i]
-                if curr_coord < goal_coord:
-                    next_point.append(h.generate_random_decimal(curr_coord-offset, goal_coord+offset))
-                else:
-                    next_point.append(h.generate_random_decimal(goal_coord-offset, curr_coord+offset))
-
-            #if self._check_collision(next_point, 0.1):
-            next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
-            solved, q_new = ik_soln_exists(next_pose, self.kin)
-            if solved:
-                curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
-                curr_pos = next_point
-                if curr_dist_to_goal < prev_dist_to_goal and self.collision_free(q_new):
-                    print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
-                    self.exec_angles(q_new)
-                    Q_new.append(q_new)
-                    prev_dist_to_goal = curr_dist_to_goal
-                    continue
-                else:
-                    print "ik: soln not collision free..."
+            if first:
+                first = False
+                # first, try the goal point
+                next_point = self.goal_point()
             else:
-                print "could not find ik soln for generated point"
+                goal_arr = self.goal_node()
+                next_point = []
+                for i in range(3):
+                    curr_coord = curr_pos[i]
+                    goal_coord = goal_arr[i]
+                    if curr_coord < goal_coord:
+                        next_point.append(h.generate_random_decimal(curr_coord-offset, goal_coord+offset))
+                    else:
+                        next_point.append(h.generate_random_decimal(goal_coord-offset, curr_coord+offset))
+            print "looking for ik soln..."
+            if self._check_collision(next_point, 0.2):
+                next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
+                solved, q_new = ik_soln_exists(next_pose, self.kin)
+                if solved:
+                    curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
+                    curr_pos = next_point
+                    if curr_dist_to_goal < prev_dist_to_goal and self.collision_free(q_new):
+                        print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
+                        self.exec_angles(q_new)
+                        Q_new.append(q_new)
+                        prev_dist_to_goal = curr_dist_to_goal
+                        continue
+                    else:
+                        print "ik: soln not collision free..."
+                else:
+                    print "could not find ik soln for generated point"
             num_tries_left -= 1
         self.add_nodes(Q_new)
