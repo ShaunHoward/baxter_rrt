@@ -80,9 +80,8 @@ class RRT:
     def _check_collision(self, x_3x1, avoidance_radius):
         if len(self.obstacles) > 0:
             for obs_point in self.obstacles[:]:
-                print(obs_point)
-                dists = np.linalg.norm(obs_point[:3] - x_3x1)
-                if np.where(dists[:, :] < avoidance_radius):
+                dist = np.linalg.norm(obs_point - x_3x1)
+                if dist < avoidance_radius:
                     print "collisions found for rrt point..."
                     return False
         return True
@@ -90,16 +89,18 @@ class RRT:
     def _check_collisions(self, link_pose_mat, avoidance_radius):
         for link_pose in link_pose_mat:
             # only use x,y,z from link pose
-            x_3x1 = link_pose[:3]
+            x_3x1 = np.array((link_pose[0,0], link_pose[0,1], link_pose[0,2]))
             if not self._check_collision(x_3x1, avoidance_radius):
                 return False
         return True
 
     def collision_free(self, q_new_angles, avoidance_radius=0.1):
         # get the pose of each link in the arm
+        # only take from the second on since the first two are always the same at 0,0,0
         link_pose_matrix = self.fwd_kin_all(q_new_angles)
+        selected_collision_end_links = link_pose_matrix[len(link_pose_matrix)-4:]
         # check collisions for each link in the arm
-        return self._check_collisions(link_pose_matrix, avoidance_radius)
+        return self._check_collisions(selected_collision_end_links, avoidance_radius)
 
     def exec_angles(self, q):
         q_dict = dict()
@@ -117,6 +118,7 @@ class RRT:
         Q_new = []
         prev_dist_to_goal = self.dist_to_goal()
         while first or prev_dist_to_goal > dist_thresh:
+            print "looking for jacobian soln..."
             if first:
                 first = False
             J_T = self.kin.jacobian_transpose(q_old)
@@ -133,6 +135,7 @@ class RRT:
                 q_old = q_new
                 prev_dist_to_goal = curr_dist_to_goal
             else:
+                print "jac: found non-collision free soln"
                 break
         self.add_nodes(Q_new)
 
@@ -144,6 +147,7 @@ class RRT:
         prev_dist_to_goal = self.dist_to_goal()
         num_tries_left = 5
         while prev_dist_to_goal > dist_thresh and num_tries_left > 0:
+            print "looking for ik soln..."
             goal_arr = self.goal_node()
             goal_pose = self.goal_pose()
             next_point = []
@@ -167,8 +171,8 @@ class RRT:
                     Q_new.append(q_new)
                     prev_dist_to_goal = curr_dist_to_goal
                     continue
-                    #else:
-                    #    print "soln not collision free..."
+                else:
+                    print "ik: soln not collision free..."
             else:
                 print "could not find ik soln for generated point"
             num_tries_left -= 1

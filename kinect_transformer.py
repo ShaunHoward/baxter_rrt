@@ -27,7 +27,8 @@ class KinectTransformer:
         header.frame_id = 'base'
         obstacle_cloud.header = header
         for point in points:
-            obstacle_cloud.points.append(Point32(point[0], point[1], point[3]))
+            obs_pt = Point32(point[0], point[1], point[2])
+            obstacle_cloud.points.append(obs_pt)
         print "publishing new obstacle clouds!"
         self.left_obs_pub.publish(obstacle_cloud)
         self.right_obs_pub.publish(obstacle_cloud)
@@ -40,9 +41,13 @@ class KinectTransformer:
         # TODO add left and right arm points to filter out of published "obstacles" per side
         points = [p for p in pc2.read_points(data, skip_nans=True, field_names=("x", "y", "z"))]
         transformed_points = h.transform_pcl2(self.tf, dest, source, points, 3)
-        self.closest_points = np.array([h.point_to_ndarray(p) for p in transformed_points if
-                              min_dist < math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2) < max_dist
-                              and p.z > min_height])
+        points_list = []
+        for p in transformed_points:
+            dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)
+            if min_dist < dist < max_dist and p.z >= min_height:
+                points_list.append((dist, p))
+        sorted_pts = np.sort(np.array(points_list), 0)
+        self.closest_points = [point for dist, point in sorted_pts]
         self.build_point_cloud(self.closest_points)
         # self.create_obstacle_wave_maps()
         # if self.left_rrt:

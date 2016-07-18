@@ -102,6 +102,7 @@ class Merry:
         self.right_rrt = None
 
     def unpack_obstacle_points(self, data, side):
+        print "updating obstacles!!!!!"
         points_unpacked = []
         for point in data.points:
             points_unpacked.append((point.x, point.y, point.z))
@@ -110,12 +111,15 @@ class Merry:
             self.left_obstacles = point_arr
         else:
             self.right_obstacles = point_arr
+        print "obstacles updated..."
 
     def left_obs_cb(self, data):
         self.unpack_obstacle_points(data, "left")
+        self.update_rrt_obstacles("left")
 
     def right_obs_cb(self, data):
         self.unpack_obstacle_points(data, "right")
+        self.update_rrt_obstacles("right")
 
     def move_to_joint_positions(self, joint_positions, side, use_move=True):
         """
@@ -186,10 +190,10 @@ class Merry:
         else:
             return self.right_obstacles
 
-    def update_rrt_obstacles(self):
-        if self.left_rrt is not None:
+    def update_rrt_obstacles(self, side):
+        if side == "left" and self.left_rrt is not None:
             self.left_rrt.update_obstacles(self.left_obstacles)
-        if self.right_rrt is not None:
+        elif side == "right" and self.right_rrt is not None:
             self.right_rrt.update_obstacles(self.right_obstacles)
 
     def get_kin(self, side):
@@ -201,12 +205,13 @@ class Merry:
     def grow(self, rrt, dist_thresh, p_goal):
         if rrt is not None:
             while rrt.dist_to_goal() > dist_thresh:
+                rospy.loginfo("growing rrt...")
                 p = random.uniform(0, 1)
                 if p < p_goal:
-                    print "using jacobian extend"
+                    rospy.loginfo("using jacobian extend")
                     rrt.extend_toward_goal(dist_thresh)
                 else:
-                    print "using ik random extend"
+                    rospy.loginfo("using ik random extend")
                     pos = self.left_arm.endpoint_pose()["position"]
                     rrt.ik_extend_randomly(np.array(pos), dist_thresh)
         return rrt
