@@ -42,6 +42,12 @@ class KDLIKSolver:
     def solve_fwd_kin(self, q_list):
         return self.solver.forward(q_list)
 
+    def joint_fwd_kin(self, q_list, base_link, end_link):
+        return self.solver.forward_2(q_list, base_link, end_link)
+
+    def fwd_kin_all(self, q_list):
+        return self.solver.forward_all(q_list)
+
     def jacobian_transpose(self, q_list):
         return self.solver.jacobian(q_list).T
 

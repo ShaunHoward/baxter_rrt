@@ -68,12 +68,13 @@ class Merry:
         self._rs.enable()
 
         # self.gripper = baxter_interface.Gripper(limb_name)
-        self.joint_states_subscriber = rospy.Subscriber("robot/joint_states", JointState, self.joint_state_cb)
+        self.joint_states_subscriber = rospy.Subscriber("robot/joint_states", JointState, self.joint_state_cb,
+                                                        queue_size=10)
 
-        #self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", pc2.PointCloud2, self.kinect_cb)
+        self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", pc2.PointCloud2, self.kinect_cb, queue_size=10)
 
         self.marker_subscriber = rospy.Subscriber("/merry_end_point_markers/feedback", InteractiveMarkerFeedback,
-                                                  self.interactive_marker_cb)
+                                                  self.interactive_marker_cb, queue_size=5)
         self.tf = tf.TransformListener()
 
         # self.kmeans = h.get_kmeans_instance(self)
@@ -86,11 +87,19 @@ class Merry:
 
         self.left_goal = None
 
+        self.left_goal_arr = None
+
         self.right_goal = None
+
+        self.right_goal_arr = None
 
         self.left_obstacle_waves = []
 
         self.right_obstacle_waves = []
+
+        self.left_rrt = None
+
+        self.right_rrt = None
 
     def move_to_joint_positions(self, joint_positions, side, use_move=True):
         """
@@ -155,11 +164,15 @@ class Merry:
             return None
 
     def get_obs_for_side(self, side):
-        return []
+        return self.closest_points
         # if side == "left":
         #     return self.left_obstacle_waves
         # else:
         #     return self.right_obstacle_waves
+
+    def update_rrt_obstacles(self):
+        if self.left_rrt is not None:
+            self.left_rrt.update_obstacles(self.left_obstacle_waves)
 
     def get_kin(self, side):
         if side == "left":
@@ -167,16 +180,27 @@ class Merry:
         else:
             return self.right_kinematics
 
-    def grow_rrt(self, side, q_start, goal_pose, obs_mapping_fn, dist_thresh=0.2, p_goal=0.5):
-        rrt = RRT(q_start, goal_pose, self.get_kin(side), side)
-        while rrt.dist_to_goal() > dist_thresh:
-            p = random.uniform(0, 1)
-            if p >= p_goal:
-                rrt.extend_toward_goal(self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
-            else:
-                pos = self.left_arm.endpoint_pose()["position"]
-                rrt.ik_extend_randomly(np.array(pos), self.get_obs_for_side(side), obs_mapping_fn, dist_thresh)
+    def grow(self, rrt, dist_thresh, p_goal):
+        if rrt is not None:
+            while rrt.dist_to_goal() > dist_thresh:
+                p = random.uniform(0, 1)
+                if p >= p_goal:
+                    rrt.extend_toward_goal(dist_thresh)
+                else:
+                    pos = self.left_arm.endpoint_pose()["position"]
+                    rrt.ik_extend_randomly(np.array(pos), dist_thresh)
         return rrt
+
+    def grow_rrt(self, side, q_start, goal_pose, dist_thresh=0.04, p_goal=0.5):
+        obs = self.get_obs_for_side(side)
+        if side == "left":
+            self.left_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.left_arm.joint_names(), obs)
+            self.grow(self.left_rrt, dist_thresh, p_goal)
+            return self.left_rrt
+        else:
+            self.right_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.right_arm.joint_names(), obs)
+            self.grow(self.right_rrt, dist_thresh, p_goal)
+            return self.right_rrt
 
     def get_goal(self, side):
         if side is "left":
@@ -184,6 +208,126 @@ class Merry:
         else:
             goal = self.right_goal
         return goal
+
+    def approach_goals(self):
+        """
+        Tries to approach the current goals.
+        First, plans for left endpoint.
+        Second, plans for right endpoint.
+        Then, redoes planning over again.
+        Loops forever, kill with ctrl-c.
+        """
+        while True:
+            left_rrt = None
+            if self.left_goal is not None:
+                print "left goal: " + str(self.left_goal)
+                left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
+                left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal)
+            if left_rrt:
+                for node in left_rrt.nodes:
+                    print "approaching new node..."
+                    node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
+                    self.check_and_execute_goal_angles(node_angle_dict, "left")
+            self.left_arm.set_joint_position_speed(0.0)
+
+            right_rrt = None
+            if self.right_goal is not None:
+                print "right goal: " + str(self.right_goal)
+                right_joint_angles = [self.right_arm.joint_angle(name) for name in self.right_arm.joint_names()]
+                right_rrt = self.grow_rrt("right", right_joint_angles, self.right_goal)
+            if right_rrt:
+                for node in right_rrt.nodes:
+                    node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
+                    self.check_and_execute_goal_angles(node_angle_dict, "right")
+            self.right_arm.set_joint_position_speed(0.0)
+        return 0
+
+    def map_point_to_wavefront_index(self, curr_point, goal_point, step_size=0.1):
+        # points are np arrays
+        if goal_point is not None:
+            dist = np.linalg.norm(goal_point - curr_point)
+            rank = dist / step_size
+            return int(math.floor(rank))
+        else:
+            return 0
+
+    def create_obstacle_wave_maps(self):
+        # wave maps are lists of lists, indexed by distance step from goal point for each side
+        closest_points = self.closest_points
+        left_obstacle_waves = list()
+        right_obstacle_waves = list()
+        min_dist = 1000000
+        max_dist = 0
+        if self.left_goal_arr is not None:
+            print "calculating left obstacle map"
+            # do left goal distance mapping first
+            for point in closest_points:
+                left_goal_point = self.left_goal_arr[:3]
+                indx = self.map_point_to_wavefront_index(point, left_goal_point)
+                if len(left_obstacle_waves) > indx:
+                    left_obstacle_waves[indx].append(point)
+                else:
+                    left_obstacle_waves.append([point])
+        if self.right_goal_arr is not None:
+            print "calculating right obstacle map"
+            # do right goal distance mapping second
+            for point in closest_points:
+                right_goal_point = self.right_goal_arr[:3]
+                indx = self.map_point_to_wavefront_index(point, right_goal_point)
+                # if len(right_obstacle_waves) > indx:
+                #     right_obstacle_waves[indx].append(point)
+                # else:
+                #     right_obstacle_waves.append([point])
+
+        self.left_obstacle_waves = left_obstacle_waves
+        self.right_obstacle_waves = right_obstacle_waves
+
+    def kinect_cb(self, data, source="kinect_link", dest="base", min_dist=0.2, max_dist=2, min_height=1):
+        """
+        Receives kinect points from the kinect subscriber linked to the publisher stream.
+        :return: kinect points numpy array
+        """
+        points = [p for p in pc2.read_points(data, skip_nans=True, field_names=("x", "y", "z"))]
+        transformed_points = h.transform_pcl2(self.tf, dest, source, points, 3)
+        self.closest_points = [h.point_to_ndarray(p) for p in transformed_points if min_dist < math.sqrt(p.x**2 + p.y**2 + p.z**2) < max_dist
+                               and p.z > min_height]
+        self.create_obstacle_wave_maps()
+        if self.left_rrt:
+            self.left_rrt.update_obstacles(self.left_obstacle_waves)
+        if self.right_rrt:
+            self.right_rrt.update_obstacles(self.right_obstacle_waves)
+        if len(self.closest_points) > 0:
+            print "kinect cb: there are this many close points: " + str(len(self.closest_points))
+
+    def joint_state_cb(self, data):
+        names = data.name
+        positions = data.position
+        velocities = data.velocity
+        efforts = data.effort
+        for i in range(len(names)):
+            self.joint_states[names[i]] = dict()
+            self.joint_states[names[i]]["position"] = positions[i]
+            self.joint_states[names[i]]["velocity"] = velocities[i]
+            self.joint_states[names[i]]["effort"] = efforts[i]
+
+    def interactive_marker_cb(self, feedback):
+        # store feedback pose as goal
+        goal = feedback.pose
+        # goal = h.pose_to_ndarray(goal)
+
+        # set right or left goal depending on marker name
+        if "right" in feedback.marker_name:
+            self.right_goal = goal
+            self.right_goal_arr = h.pose_to_ndarray(goal)
+            if self.right_rrt:
+                self.right_rrt.update_goal(goal)
+        elif "left" in feedback.marker_name:
+            self.left_goal = goal
+            self.left_goal_arr = h.pose_to_ndarray(goal)
+            if self.left_rrt:
+                self.left_rrt.update_goal(goal)
+        else:
+            rospy.loginfo("got singular end-point goal")
 
     def approach_single_goal(self, side, kin):
         """
@@ -222,115 +366,6 @@ class Merry:
         print "found goal solution"
         return status
 
-    def approach_goals(self):
-        """
-        Tries to approach the current goals.
-        First, plans for left endpoint.
-        --not yet: Second, plans for right endpoint.
-        Then, redoes planning over again.
-        Loops forever, kill with ctrl-c.
-        """
-        while True:
-            left_rrt = None
-            if self.left_goal is not None:
-                print "goal: " + str(self.left_goal)
-                left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
-                left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal,
-                                         self.map_point_to_wavefront_index)
-            if left_rrt:
-                for node in left_rrt.nodes:
-                    node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
-                    self.check_and_execute_goal_angles(node_angle_dict, "left")
-            self.left_arm.set_joint_position_speed(0.0)
-
-            right_rrt = None
-            if self.right_goal is not None:
-                right_rrt = self.grow_rrt("right", self.right_arm.endpoint_pose(), self.right_goal,
-                                          self.map_point_to_wavefront_index)
-
-            if right_rrt:
-                for node in right_rrt.nodes:
-                    self.move_to_joint_positions(node, "right")
-                self.right_arm.set_joint_position_speed(0.0)
-        return 0
-
-    def map_point_to_wavefront_index(self, curr_point, goal_point, step_size=0.1):
-        # points are np arrays
-        if goal_point is not None:
-            dist = np.linalg.norm(goal_point - curr_point)
-            rank = dist / step_size
-            return int(math.floor(rank))
-        else:
-            return 0
-
-    def create_obstacle_wave_maps(self):
-        # wave maps are lists of lists, indexed by distance step from goal point for each side
-        closest_points = self.closest_points
-        left_obstacle_waves = list()
-        right_obstacle_waves = list()
-        min_dist = 1000000
-        max_dist = 0
-        if self.left_goal_arr is not None:
-            # do left goal distance mapping first
-            for point in closest_points:
-                left_goal_point = self.left_goal_arr[:3]
-                indx = self.map_point_to_wavefront_index(point, left_goal_point)
-                # if len(left_obstacle_waves) > indx:
-                #     left_obstacle_waves[indx].append(point)
-                # else:
-                #     left_obstacle_waves.append([point])
-        if self.right_goal_arr is not None:
-            # do right goal distance mapping second
-            for point in closest_points:
-                right_goal_point = self.right_goal_arr[:3]
-                indx = self.map_point_to_wavefront_index(point, right_goal_point)
-                # if len(right_obstacle_waves) > indx:
-                #     right_obstacle_waves[indx].append(point)
-                # else:
-                #     right_obstacle_waves.append([point])
-
-        self.left_obstacle_waves = left_obstacle_waves
-        self.right_obstacle_waves = right_obstacle_waves
-
-    def kinect_cb(self, data, source="kinect_link", dest="base", min_dist=0.2, max_dist=2, min_height=1):
-        """
-        Receives kinect points from the kinect subscriber linked to the publisher stream.
-        :return: kinect points numpy array
-        """
-        points = [p for p in pc2.read_points(data, skip_nans=True, field_names=("x", "y", "z"))]
-        transformed_points = h.transform_pcl2(self.tf, dest, source, points, 3)
-        self.closest_points = [h.point_to_ndarray(p) for p in transformed_points if min_dist < math.sqrt(p.x**2 + p.y**2 + p.z**2) < max_dist
-                               and p.z > min_height]
-        self.create_obstacle_wave_maps()
-        if len(self.closest_points) > 0:
-            print "kinect cb: there are this many close points: " + str(len(self.closest_points))
-
-    def joint_state_cb(self, data):
-        names = data.name
-        positions = data.position
-        velocities = data.velocity
-        efforts = data.effort
-        for i in range(len(names)):
-            self.joint_states[names[i]] = dict()
-            self.joint_states[names[i]]["position"] = positions[i]
-            self.joint_states[names[i]]["velocity"] = velocities[i]
-            self.joint_states[names[i]]["effort"] = efforts[i]
-
-    def interactive_marker_cb(self, feedback):
-        # store feedback pose as goal
-        goal = feedback.pose
-        # goal = h.pose_to_ndarray(goal)
-
-        # set right or left goal depending on marker name
-        if "right" in feedback.marker_name:
-            self.right_goal = goal
-            self.right_goal_arr = h.pose_to_ndarray(goal)
-        elif "left" in feedback.marker_name:
-            self.left_goal = goal
-            self.left_goal_arr = h.pose_to_ndarray(goal)
-        else:
-            rospy.loginfo("got singular end-point goal")
-
     def get_joint_angles(self, side="right"):
         """Gets the joint angle dictionary of the specified arm side."""
         joint_angles = self.right_arm.joint_angles() if side is "right" else self.left_arm.joint_angles()
@@ -353,6 +388,9 @@ class Merry:
     def clean_shutdown(self):
         print("\nExiting example...")
         if not self._init_state:
+            print("stopping robot...")
+            self.left_arm.set_joint_position_speed(0)
+            self.right_arm.set_joint_position_speed(0)
             print("Disabling robot...")
             self._rs.disable()
         return True
