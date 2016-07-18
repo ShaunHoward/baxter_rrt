@@ -7,7 +7,6 @@ import random
 import rospy
 
 import sys
-import tf
 
 #from baxter_pykdl import baxter_kinematics
 from solver.ik_solver import KDLIKSolver
@@ -22,6 +21,7 @@ from geometry_msgs.msg import (
 from planner.rrt import RRT
 from sensor_msgs import point_cloud2 as pc2
 from sensor_msgs.msg import JointState
+from sensor_msgs.msg import PointCloud
 from solver.ik_solver import RethinkIKSolver
 from visualization_msgs.msg import InteractiveMarkerFeedback
 
@@ -71,11 +71,11 @@ class Merry:
         self.joint_states_subscriber = rospy.Subscriber("robot/joint_states", JointState, self.joint_state_cb,
                                                         queue_size=10)
 
-        self.kinect_subscriber = rospy.Subscriber("kinect/depth/points", pc2.PointCloud2, self.kinect_cb, queue_size=10)
-
         self.marker_subscriber = rospy.Subscriber("/merry_end_point_markers/feedback", InteractiveMarkerFeedback,
                                                   self.interactive_marker_cb, queue_size=5)
-        self.tf = tf.TransformListener()
+
+        self.left_obs_sub = rospy.Subscriber("left_arm_obstacles", PointCloud, self.left_obs_cb, queue_size=10)
+        self.right_obs_sub = rospy.Subscriber("right_arm_obstacles", PointCloud, self.right_obs_cb, queue_size=10)
 
         # self.kmeans = h.get_kmeans_instance(self)
 
@@ -93,13 +93,29 @@ class Merry:
 
         self.right_goal_arr = None
 
-        self.left_obstacle_waves = []
+        self.left_obstacles = []
 
-        self.right_obstacle_waves = []
+        self.right_obstacles = []
 
         self.left_rrt = None
 
         self.right_rrt = None
+
+    def unpack_obstacle_points(self, data, side):
+        points_unpacked = []
+        for point in data.points:
+            points_unpacked.append((point.x, point.y, point.z))
+        point_arr = np.mat(points_unpacked)
+        if side == "left":
+            self.left_obstacles = point_arr
+        else:
+            self.right_obstacles = point_arr
+
+    def left_obs_cb(self, data):
+        self.unpack_obstacle_points(data, "left")
+
+    def right_obs_cb(self, data):
+        self.unpack_obstacle_points(data, "right")
 
     def move_to_joint_positions(self, joint_positions, side, use_move=True):
         """
@@ -164,15 +180,17 @@ class Merry:
             return None
 
     def get_obs_for_side(self, side):
-        return self.closest_points
-        # if side == "left":
-        #     return self.left_obstacle_waves
-        # else:
-        #     return self.right_obstacle_waves
+        # TODO, filter left arm for left cloud, filter right arm for right cloud
+        if side == "left":
+            return self.left_obstacles
+        else:
+            return self.right_obstacles
 
     def update_rrt_obstacles(self):
         if self.left_rrt is not None:
-            self.left_rrt.update_obstacles(self.left_obstacle_waves)
+            self.left_rrt.update_obstacles(self.left_obstacles)
+        if self.right_rrt is not None:
+            self.right_rrt.update_obstacles(self.right_obstacles)
 
     def get_kin(self, side):
         if side == "left":
@@ -184,9 +202,11 @@ class Merry:
         if rrt is not None:
             while rrt.dist_to_goal() > dist_thresh:
                 p = random.uniform(0, 1)
-                if p >= p_goal:
+                if p < p_goal:
+                    print "using jacobian extend"
                     rrt.extend_toward_goal(dist_thresh)
                 else:
+                    print "using ik random extend"
                     pos = self.left_arm.endpoint_pose()["position"]
                     rrt.ik_extend_randomly(np.array(pos), dist_thresh)
         return rrt
@@ -194,11 +214,13 @@ class Merry:
     def grow_rrt(self, side, q_start, goal_pose, dist_thresh=0.04, p_goal=0.5):
         obs = self.get_obs_for_side(side)
         if side == "left":
-            self.left_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.left_arm.joint_names(), obs)
+            self.left_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.left_arm.joint_names(), obs,
+                                self.check_and_execute_goal_angles)
             self.grow(self.left_rrt, dist_thresh, p_goal)
             return self.left_rrt
         else:
-            self.right_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.right_arm.joint_names(), obs)
+            self.right_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.right_arm.joint_names(), obs,
+                                 self.check_and_execute_goal_angles)
             self.grow(self.right_rrt, dist_thresh, p_goal)
             return self.right_rrt
 
@@ -224,21 +246,23 @@ class Merry:
                 left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
                 left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal)
             if left_rrt:
-                for node in left_rrt.nodes:
-                    print "approaching new node..."
-                    node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
-                    self.check_and_execute_goal_angles(node_angle_dict, "left")
+                print "executed goal"
+                # for node in left_rrt.nodes:
+                #     print "approaching new node..."
+                #     node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
+                #     self.check_and_execute_goal_angles(node_angle_dict, "left")
+                #     print "reached new node destination..."
             self.left_arm.set_joint_position_speed(0.0)
 
-            right_rrt = None
-            if self.right_goal is not None:
-                print "right goal: " + str(self.right_goal)
-                right_joint_angles = [self.right_arm.joint_angle(name) for name in self.right_arm.joint_names()]
-                right_rrt = self.grow_rrt("right", right_joint_angles, self.right_goal)
-            if right_rrt:
-                for node in right_rrt.nodes:
-                    node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
-                    self.check_and_execute_goal_angles(node_angle_dict, "right")
+            # right_rrt = None
+            # if self.right_goal is not None:
+            #     print "right goal: " + str(self.right_goal)
+            #     right_joint_angles = [self.right_arm.joint_angle(name) for name in self.right_arm.joint_names()]
+            #     right_rrt = self.grow_rrt("right", right_joint_angles, self.right_goal)
+            # if right_rrt:
+            #     for node in right_rrt.nodes:
+            #         node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
+            #         self.check_and_execute_goal_angles(node_angle_dict, "right")
             self.right_arm.set_joint_position_speed(0.0)
         return 0
 
@@ -279,25 +303,8 @@ class Merry:
                 # else:
                 #     right_obstacle_waves.append([point])
 
-        self.left_obstacle_waves = left_obstacle_waves
-        self.right_obstacle_waves = right_obstacle_waves
-
-    def kinect_cb(self, data, source="kinect_link", dest="base", min_dist=0.2, max_dist=2, min_height=1):
-        """
-        Receives kinect points from the kinect subscriber linked to the publisher stream.
-        :return: kinect points numpy array
-        """
-        points = [p for p in pc2.read_points(data, skip_nans=True, field_names=("x", "y", "z"))]
-        transformed_points = h.transform_pcl2(self.tf, dest, source, points, 3)
-        self.closest_points = [h.point_to_ndarray(p) for p in transformed_points if min_dist < math.sqrt(p.x**2 + p.y**2 + p.z**2) < max_dist
-                               and p.z > min_height]
-        self.create_obstacle_wave_maps()
-        if self.left_rrt:
-            self.left_rrt.update_obstacles(self.left_obstacle_waves)
-        if self.right_rrt:
-            self.right_rrt.update_obstacles(self.right_obstacle_waves)
-        if len(self.closest_points) > 0:
-            print "kinect cb: there are this many close points: " + str(len(self.closest_points))
+        self.left_obstacles = left_obstacle_waves
+        self.right_obstacles = right_obstacle_waves
 
     def joint_state_cb(self, data):
         names = data.name
