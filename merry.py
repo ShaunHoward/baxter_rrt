@@ -251,65 +251,28 @@ class Merry:
                 left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
                 left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal)
             if left_rrt:
-                print "executed goal"
                 # for node in left_rrt.nodes:
                 #     print "approaching new node..."
                 #     node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
                 #     self.check_and_execute_goal_angles(node_angle_dict, "left")
                 #     print "reached new node destination..."
+                rospy.loginfo("met left goal")
+
             self.left_arm.set_joint_position_speed(0.0)
 
-            # right_rrt = None
-            # if self.right_goal is not None:
-            #     print "right goal: " + str(self.right_goal)
-            #     right_joint_angles = [self.right_arm.joint_angle(name) for name in self.right_arm.joint_names()]
-            #     right_rrt = self.grow_rrt("right", right_joint_angles, self.right_goal)
-            # if right_rrt:
-            #     for node in right_rrt.nodes:
-            #         node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
-            #         self.check_and_execute_goal_angles(node_angle_dict, "right")
+            right_rrt = None
+            if self.right_goal is not None:
+                print "right goal: " + str(self.right_goal)
+                right_joint_angles = [self.right_arm.joint_angle(name) for name in self.right_arm.joint_names()]
+                right_rrt = self.grow_rrt("right", right_joint_angles, self.right_goal)
+            if right_rrt:
+                # for node in right_rrt.nodes:
+                #     node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
+                #     self.check_and_execute_goal_angles(node_angle_dict, "right")
+                rospy.loginfo("met right goal")
+
             self.right_arm.set_joint_position_speed(0.0)
         return 0
-
-    def map_point_to_wavefront_index(self, curr_point, goal_point, step_size=0.1):
-        # points are np arrays
-        if goal_point is not None:
-            dist = np.linalg.norm(goal_point - curr_point)
-            rank = dist / step_size
-            return int(math.floor(rank))
-        else:
-            return 0
-
-    def create_obstacle_wave_maps(self):
-        # wave maps are lists of lists, indexed by distance step from goal point for each side
-        closest_points = self.closest_points
-        left_obstacle_waves = list()
-        right_obstacle_waves = list()
-        min_dist = 1000000
-        max_dist = 0
-        if self.left_goal_arr is not None:
-            print "calculating left obstacle map"
-            # do left goal distance mapping first
-            for point in closest_points:
-                left_goal_point = self.left_goal_arr[:3]
-                indx = self.map_point_to_wavefront_index(point, left_goal_point)
-                if len(left_obstacle_waves) > indx:
-                    left_obstacle_waves[indx].append(point)
-                else:
-                    left_obstacle_waves.append([point])
-        if self.right_goal_arr is not None:
-            print "calculating right obstacle map"
-            # do right goal distance mapping second
-            for point in closest_points:
-                right_goal_point = self.right_goal_arr[:3]
-                indx = self.map_point_to_wavefront_index(point, right_goal_point)
-                # if len(right_obstacle_waves) > indx:
-                #     right_obstacle_waves[indx].append(point)
-                # else:
-                #     right_obstacle_waves.append([point])
-
-        self.left_obstacles = left_obstacle_waves
-        self.right_obstacles = right_obstacle_waves
 
     def joint_state_cb(self, data):
         names = data.name
