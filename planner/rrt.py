@@ -51,6 +51,10 @@ class RRT:
         self.joint_names = joint_names
         self.exec_angles_method = exec_angles_method
 
+        # define goals
+        self.x_goal = None
+        self.p_goal = None
+
     def add_nodes(self, nodes_to_add):
         self.nodes.extend(nodes_to_add)
 
@@ -194,7 +198,7 @@ class RRT:
                 break
         self.add_nodes(Q_new)
 
-    def ik_extend_randomly(self, curr_pos, dist_thresh, offset=0.1, avoidance_radius=0.2):
+    def ik_extend_randomly(self, curr_pos, dist_thresh, offset=0.1, avoidance_radius=0.2, num_tries=5):
         """
         Random straight-line extension using KDL IK planner for the RRT step.
         Starts generating random points close to goal, from the goal out, until it finds a valid solution.
@@ -204,6 +208,8 @@ class RRT:
         :param offset: the cartesian step offset upper limit of the range at which to generate points, starting from
         the goal and stepping out the range until a valid soln is found within that range.
         :param avoidance_radius: the radius to avoid collisions around the arm being planner for
+        :param num_tries: the number of times to regenerate a new random point at a larger step away from goal
+        than the previous try with step being offset
         """
         # TODO modify to start randomly near goal then move away from goal if no solns present
         # returns the nearest distance to goal from the last node added by this method
@@ -211,8 +217,10 @@ class RRT:
         # first = True
         Q_new = []
         prev_dist_to_goal = self.dist_to_goal()
-        num_tries_left = 5
+        num_tries_left = num_tries
         first = True
+        # start with soln at goal and work outward until soln available
+        curr_diameter = 0
         while prev_dist_to_goal > dist_thresh and num_tries_left > 0:
             goal_pose = self.goal_pose()
             if first:
@@ -225,10 +233,12 @@ class RRT:
                 for i in range(3):
                     curr_coord = curr_pos[i]
                     goal_coord = goal_arr[i]
-                    if curr_coord < goal_coord:
-                        next_point.append(h.generate_random_decimal(curr_coord-offset, goal_coord+offset))
-                    else:
-                        next_point.append(h.generate_random_decimal(goal_coord-offset, curr_coord+offset))
+                    radius = curr_diameter/2.0
+                    next_point.append(h.generate_random_decimal(curr_coord - radius, goal_coord + radius))
+                    # if curr_coord < goal_coord:
+                    #     next_point.append(h.generate_random_decimal(curr_coord-offset, goal_coord+offset))
+                    # else:
+                    #     next_point.append(h.generate_random_decimal(goal_coord-offset, curr_coord+offset))
             print "looking for ik soln..."
             if self._check_collision(next_point, avoidance_radius):
                 next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
@@ -236,6 +246,8 @@ class RRT:
                 if solved:
                     curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
                     curr_pos = next_point
+                    # only add the point as a soln if the distance from this point to goal is less than that from the
+                    # last end effector point
                     if curr_dist_to_goal < prev_dist_to_goal and self.collision_free(q_new):
                         print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
                         self.exec_angles(q_new)
@@ -246,5 +258,7 @@ class RRT:
                         print "ik: soln not collision free..."
                 else:
                     print "could not find ik soln for generated point"
+            # increment current range for generating random points by adding another offset amount
+            curr_diameter += offset
             num_tries_left -= 1
         self.add_nodes(Q_new)
