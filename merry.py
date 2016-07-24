@@ -73,8 +73,8 @@ class Merry:
         self.left_obs_sub = rospy.Subscriber("left_arm_obstacles", PointCloud, self.left_obs_cb, queue_size=10)
         self.right_obs_sub = rospy.Subscriber("right_arm_obstacles", PointCloud, self.right_obs_cb, queue_size=10)
 
-        # instantiate k-means clusterer for obstacle avoidance and planning purposes
-        self.kmeans = h.get_kmeans_instance(self)
+        # instantiate k-means clusterer for obstacle avoidance and planning purposes, really done in obstacle callback
+        self.kmeans = None
 
         # create kinematics solvers for both the left and right arms
         self.left_kinematics = KDLIKSolver("left")
@@ -224,7 +224,7 @@ class Merry:
         else:
             goal = self.right_goal
         if goal:
-            return h.point_to_ndarray(goal.position)
+            return h.point_to_3x1_vector(goal.position)
         else:
             return None
 
@@ -430,12 +430,12 @@ class Merry:
         # set right or left goal depending on marker name
         if "right" in feedback.marker_name:
             self.right_goal = goal
-            self.right_goal_arr = h.pose_to_ndarray(goal)
+            self.right_goal_arr = h.pose_to_7x1_vector(goal)
             if self.right_rrt:
                 self.right_rrt.update_goal(goal)
         elif "left" in feedback.marker_name:
             self.left_goal = goal
-            self.left_goal_arr = h.pose_to_ndarray(goal)
+            self.left_goal_arr = h.pose_to_7x1_vector(goal)
             if self.left_rrt:
                 self.left_rrt.update_goal(goal)
         else:

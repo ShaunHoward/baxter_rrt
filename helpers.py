@@ -1,50 +1,62 @@
 import argparse
-import baxter_interface
 import copy
-import decimal
-import math
 import numpy as np
 import random
 import rospy
 
 from geometry_msgs.msg import (
-    PoseStamped,
     Pose,
     Point,
-    Twist)
+    Twist
+)
 
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
 
-__author__ = 'shaun howard'
-
-OK = "OK"
-ERROR = "ERROR"
+__author__ = 'Shaun Howard (smh150@case.edu)'
 
 
-def point_to_ndarray(point):
+def point_to_3x1_vector(point):
+    """
+    Converts a Point with x,y,z to a 3x1 numpy array.
+    :param point: the Point object with x,y,z attributes
+    :return: the 3x1 numpy array of the Point
+    """
     return np.array((point.x, point.y, point.z))
 
 
-def pose_to_ndarray(pose):
+def pose_to_7x1_vector(pose):
+    """
+    Converts a Pose to a 7x1 numpy array.
+    :param pose: the Pose to convert to 7x1 array
+    :param pose:
+    :return:
+    """
     return np.array((pose.position.x, pose.position.y, pose.position.z, pose.orientation.x,
                      pose.orientation.y, pose.orientation.z, pose.orientation.w))
 
 
 def generate_random_decimal(start=0.00001, stop=0.5, decimal_places=5):
+    """
+    Generates a uniformly random decimal value between start and stop inclusive with the provided
+    number of decimal places.
+    :param start: the start number for the random range
+    :param stop: the stop number for the random range
+    :param decimal_places: the number of decimal places for the result to have
+    :return: the rounded randomly generated number in between start and stop
+    """
     return round(random.uniform(start, stop), decimal_places)
 
 
-def determine_overall_status(l_status, r_status):
-    if l_status is OK and r_status is OK:
-       status = OK
-    else:
-       status = ERROR
-    return status
-
-
 def wrap_angles_in_dict(angles, keys):
+    """
+    Creates a dictionary from the provided ordered angles list corresponding to the provided keys name list.
+    The mapping is constructed like so: for i in len(keys): q_dict[keys[i]] = angles[i].
+    :param angles: the ordered angles list corresponding to keys list of names
+    :param keys: the ordered list of keys from base to end effector
+    :return: the mapping from keys to angles in a dictionary
+    """
     q_dict = dict()
     for i in range(len(keys)):
         q_dict[keys[i]] = angles[i]
@@ -52,7 +64,10 @@ def wrap_angles_in_dict(angles, keys):
 
 
 def generate_goal_pose_w_same_orientation(dest_point, endpoint_orientaton):
-    """Uses inverse kinematics to generate joint angles at destination point."""
+    """
+    Creates a Pose from the 3x1 destination point np array and Pose.orientation data object as endpoint_orientation.
+    If endpoint_orientation is None, a partially-filled Pose will be returned with only x,y,z populated.
+    """
     ik_pose = Pose()
     ik_pose.position.x = dest_point[0]
     ik_pose.position.y = dest_point[1]
@@ -67,6 +82,10 @@ def generate_goal_pose_w_same_orientation(dest_point, endpoint_orientaton):
 
 
 def get_args():
+    """
+    Handles argument parsing and gets the startup arguments. No defaults are set here. They are set in the Merry
+    class constructor.
+    """
     arg_fmt = argparse.RawDescriptionHelpFormatter
     parser = argparse.ArgumentParser(formatter_class=arg_fmt,
                                      description=""""
@@ -75,16 +94,15 @@ def get_args():
                                      fields.""")
     required = parser.add_argument_group('required arguments')
     required.add_argument(
-        '-l', '--limb', required=False, choices=['left', 'right'], default='right',
+        '-l', '--limb', required=False, choices=['left', 'right'],
         help='limb to record/playback waypoints'
     )
     parser.add_argument(
-        '-s', '--speed', default=0.3, type=float,
-        help='joint position motion speed ratio [0.0-1.0] (default:= 0.3)'
+        '-s', '--speed', type=float,
+        help='joint position motion speed ratio [0.0-1.0] (default=0.5)'
     )
     parser.add_argument(
-        '-a', '--accuracy',
-        default=baxter_interface.JOINT_ANGLE_TOLERANCE, type=float,
+        '-a', '--accuracy', type=float,
         help='joint position accuracy (rad) at which waypoints must achieve'
     )
     return parser.parse_args(rospy.myargv()[1:])
@@ -119,37 +137,40 @@ def get_critical_points_of_obstacles(merry):
     return None if not (closest_point and closest_dist) else [(closest_point, closest_dist)]
 
 
-def list_to_pose(q_list):
+def pose_vector_to_pose_msg(pose_vector):
+    """
+    Converts an ordered pose angle vector to a Pose.
+    Mapping is 0,1,2 -> x,y,z, 3,4,5,6 -> q.x,q.y,q.z,q.w,
+    this will created a 3-d pose if only 0,1,2 are populated, otherwise if 7 values are present,
+    a 7-d pose will be created.
+    :param pose_vector: the ordered angle vector of either x,y,z or x,y,z,q.x,q.y,q.z,q.w set
+    :return: the pose, either 3-d or 7-d depending on if q_list is length 3 or length 7
+    """
     pose = Pose()
-    if len(q_list) >= 2:
-        return get_pose(q_list[0], q_list[1], q_list[2])
-    # else:
-    #     pose.position = None
-    if len(q_list) == 7:
-        pose.orientation.x = q_list[3]
-        pose.orientation.x = q_list[4]
-        pose.orientation.x = q_list[5]
-        pose.orientation.x = q_list[6]
-        return get_pose(q_list[0], q_list[1], q_list[2], q_list[3], q_list[4], q_list[5], q_list[6])
-    # else:
-    #     pose.orientation = None
-    return pose
-
-
-def dict_to_pose(q_dict):
-    pose = Pose()
-    keys = q_dict.keys()
-    pose.position.x = q_dict[keys[0]]
-    pose.position.y = q_dict[keys[1]]
-    pose.position.z = q_dict[keys[2]]
-    pose.orientation.x = q_dict[keys[3]]
-    pose.orientation.x = q_dict[keys[4]]
-    pose.orientation.x = q_dict[keys[5]]
-    pose.orientation.x = q_dict[keys[6]]
+    if len(pose_vector) >= 2:
+        return get_pose(pose_vector[0], pose_vector[1], pose_vector[2])
+    if len(pose_vector) == 7:
+        pose.orientation.x = pose_vector[3]
+        pose.orientation.x = pose_vector[4]
+        pose.orientation.x = pose_vector[5]
+        pose.orientation.x = pose_vector[6]
+        return get_pose(pose_vector[0], pose_vector[1], pose_vector[2], pose_vector[3], pose_vector[4], pose_vector[5], pose_vector[6])
     return pose
 
 
 def get_pose(x, y, z, ox=0, oy=0, oz=0, ow=1):
+    """
+    Creates a pose using x,y,z,ox,oy,oz,ow values.
+    Default ox,oy,oz,ow values are 0,0,0,1.
+    :param x: x position
+    :param y: y position
+    :param z: z position
+    :param ox: x quaternion
+    :param oy: y quaternion
+    :param oz: z quaternion
+    :param ow: w quaternion
+    :return:
+    """
     pm = Pose()
     pm.position.x = x
     pm.position.y = y
@@ -162,6 +183,11 @@ def get_pose(x, y, z, ox=0, oy=0, oz=0, ow=1):
 
 
 def get_current_endpoint_pose(arm):
+    """
+    Returns the Pose of the provided arm endpoint.
+    :param arm: the Baxter Interface Limb to get the endpoint_pose() from
+    :return: the Pose msg of the provided arm
+    """
     # retrieve current pose from endpoint
     current_pose = arm.endpoint_pose()
     pose_msg = Pose()
@@ -176,7 +202,12 @@ def get_current_endpoint_pose(arm):
 
 
 def get_current_endpoint_velocities(arm):
-    current_vels = arm._limb.endpoint_velocity()
+    """
+    Returns the Twist msg of the provided arm endpoint.
+    :param arm: the Baxter Interface Limb to get the endpoint_velocity() from
+    :return: the Twist msg of the provided arm
+    """
+    current_vels = arm.endpoint_velocity()
     vel_msg = Twist()
     vel_msg.linear.x = current_vels['linear'].x
     vel_msg.linear.y = current_vels['linear'].y
@@ -187,8 +218,8 @@ def get_current_endpoint_velocities(arm):
     return vel_msg
 
 
-def get_kmeans_instance(merry, num_clusts=10):
-    merry.kmeans_initialized = False
+def get_kmeans_instance(num_clusts=10):
+    """Creates and returns a scikit learn Kmeans clusterer instance with the provided number of clusters."""
     # seed numpy with the answer to the universe
     np.random.seed(42)
     kmeans = KMeans(init='k-means++', n_clusters=num_clusts, n_init=num_clusts)
@@ -197,11 +228,17 @@ def get_kmeans_instance(merry, num_clusts=10):
 
 def lookup_transform(tf_, from_frame, to_frame):
     """"
-    :return: a set of points converted from_frame to_frame.
+    Looks up a transform from the from_frame to the to_frame.
+    Checks if the frame to_frame exists and if the frame from_frame exists.
+    Then, checks for the latest update time and gets the position and quaternion transforms
+    from the from_frame to the to_frame.
+    :param from_frame: the frame the msg starts at
+    :param to_frame: the frame the msg needs to transform to
+    :return: the position and quaternion for the transform from_frame to to_frame, or None for both if the
+    transform frames do not exist
     """
     position = None
     quaternion = None
-    # rosrun tf tf_echo right_gripper right_hand_camera
     if tf_.frameExists(to_frame) and tf_.frameExists(from_frame):
         t = tf_.getLatestCommonTime(to_frame, from_frame)
         position, quaternion = tf_.lookupTransform(to_frame, from_frame, t)
@@ -209,11 +246,30 @@ def lookup_transform(tf_, from_frame, to_frame):
 
 
 def as_matrix2(tf_, target_frame, source_frame):
+    """
+    Transforms the translation and rotation from the Pose msg to a 4x4 matrix
+    from the from_frame to the to_frame.
+    :param tf_: the TransformListener instance to use for the conversion
+    :param target_frame: the frame to convert to
+    :param source_frame: the frame to convert from
+    :return: a 4x4 matrix describing the rotation of the end effector
+    """
     return tf_.fromTranslationRotation(*lookup_transform(tf_, source_frame, target_frame))
 
 
 def transform_pcl2(tf_, target_frame, source_frame, point_cloud, duration=2):
-    # returns a list of transformed points
+    """
+    Transforms the given point_cloud from the source_frame to the target_frame using a custom
+    implementation of the pcl2 transform_pcl2 using a TransformListener instance tf_. The
+    transform is sought over the provided duration number of seconds.
+    :param tf_: the TransformListener instance
+    :param target_frame: the frame to convert PointCloud to
+    :param source_frame: the frame to convert PointCloud from
+    :param point_cloud: the PointCloud to transform
+    :param duration: the number of seconds to capture a transformation over
+    :return: the List of Points with x,y,z extracted, transformed and loaded from the provided point_cloud
+    """
+    # returns a list of transformed Points
     tf_.waitForTransform(target_frame, source_frame, rospy.Time.now(), rospy.Duration(duration))
     mat44 = as_matrix2(tf_, target_frame, source_frame)
     if point_cloud[0]:

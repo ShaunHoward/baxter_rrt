@@ -74,7 +74,7 @@ class RRT:
         self.obstacles = np.mat(new_obs)
 
     def update_goal(self, p_goal):
-        self.x_goal = h.pose_to_ndarray(p_goal)
+        self.x_goal = h.pose_to_7x1_vector(p_goal)
         self.p_goal = p_goal
         print "updating rrt goal"
 
