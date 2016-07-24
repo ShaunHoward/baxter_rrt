@@ -1,8 +1,16 @@
 import numpy as np
 import helpers as h
 
+__author__ = "Shaun Howard (smh150@case.edu)"
+
 
 def ik_soln_exists(goal_pose, kin):
+    """
+    Determines if an IK solution exists for the goal_pose using the provided kinematics solver instance, kin.
+    :param goal_pose: the goal pose to determine if a soln exists for
+    :param kin: the kinematics solver instance
+    :return: whether a soln exists and the angles for that soln as a numpy array
+    """
     goal_angles = None
     if goal_pose is not None:
         goal_angles = None
@@ -15,9 +23,24 @@ def ik_soln_exists(goal_pose, kin):
 
 
 class RRT:
-    # one-way RRT
+    """
+    Class for Shaun Howard's online hybrid RRT-JT/Random IK joint angle planner.
+    """
 
     def __init__(self, q_start, p_goal, kin_solver, side, joint_names, obstacles, exec_angles_method):
+        """
+        Constructor for RRT. Accepts a numpy array of starting angles, probability to approach the goal in a straight
+        line, the kinematics solver instance for the RRT side arm, an ordered list of joint_names from base to end
+        effector, a list of obstacle points that should not include the current arm being planned for, and the method to
+        execute the joint angles from the Merry object instance used to create this RRT instance.
+        :param q_start: 7x1 numpy vector of starting joint angles
+        :param p_goal: probability to approach goal with random straight-line IK goal planner
+        :param kin_solver: the KDL kinematics solver instance
+        :param side: the side, left or right, of arm to plan for
+        :param joint_names: the ordered list of joint names from base to end effector
+        :param obstacles: the list of obstacles not including the arm being planned for
+        :param exec_angles_method: the method to execute the joint angles on Merry
+        """
         self.kin = kin_solver
         self.q_start = q_start
         self.update_goal(p_goal)

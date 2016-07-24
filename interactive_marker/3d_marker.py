@@ -10,6 +10,9 @@ from tf.broadcaster import TransformBroadcaster
 from random import random
 from math import sin
 
+__author__ = "Shaun Howard (smh150@case.edu)"
+
+
 counter = 0
 server = None
 

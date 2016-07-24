@@ -4,6 +4,8 @@ import rospy
 from scipy.stats import norm
 virtualforce = False
 
+__author__ = "Shaun Howard (smh150@case.edu)"
+
 
 class Baxter():
     def __init__(self, p, obstacles, dt, m, fMax, diam):

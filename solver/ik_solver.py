@@ -17,6 +17,8 @@ from urdf_parser_py.urdf import URDF
 import helpers as h
 from hrl_geom.pose_converter import PoseConv
 
+__author__ = "Shaun Howard (smh150@case.edu)"
+
 
 def get_min_joints():
         return np.array([-3.059, -1.57079632679, -3.059, -0.05, -3.05417993878, -2.147, -1.70167993878])

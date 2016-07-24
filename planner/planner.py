@@ -5,6 +5,8 @@ import rospy
 import scipy
 from baxter_pykdl import baxter_kinematics as bkin
 
+__author__ = "Shaun Howard (smh150@case.edu)"
+
 
 def calculate_cartesian_jacobian(joint_angles):
     height = 6

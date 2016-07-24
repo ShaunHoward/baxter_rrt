@@ -12,7 +12,6 @@ from visualization_msgs.msg import InteractiveMarkerFeedback
 from planner.rrt import RRT
 from solver.ik_solver import KDLIKSolver
 
-
 __author__ = 'Shaun Howard (smh150@case.edu)'
 
 

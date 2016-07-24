@@ -9,6 +9,8 @@ from geometry_msgs.msg import Point32
 from sensor_msgs.msg import PointCloud
 from sensor_msgs import point_cloud2 as pc2
 
+__author__ = "Shaun Howard (smh150@case.edu)"
+
 
 class KinectTransformer:
     # MAKE SURE KINECT STARTS WITH BAXTER_WORLD LAUNCH

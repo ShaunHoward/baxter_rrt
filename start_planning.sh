@@ -1,4 +1,5 @@
 #! /bin/bash
+# author: Shaun Howard (smh150@case.edu)
 
 # startup baxter simulator
 roslaunch cwru_baxter_sim baxter_world.launch &
