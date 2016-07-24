@@ -232,14 +232,14 @@ class Merry:
         """
         Gets the pose for the goal of the specified side
         :param side: the left or right side arm to get goal of
-        :return: the goal pose for the given side
+        :return: the goal pose for the given side or None if the goal is not set
         """
         if side is "left":
             goal = self.left_goal
         else:
             goal = self.right_goal
         if goal:
-            return h.pose_to_ndarray(goal)
+            return goal
         else:
             return None
 
@@ -324,22 +324,15 @@ class Merry:
             self.grow(self.right_rrt, dist_thresh, p_goal)
             return self.right_rrt
 
-    def get_goal(self, side):
-        if side is "left":
-            goal = self.left_goal
-        else:
-            goal = self.right_goal
-        return goal
-
     def approach_goals(self):
         """
-        Tries to approach the current goals.
-        First, plans for left endpoint.
-        Second, plans for right endpoint.
-        Then, redoes planning over again.
-        Loops forever, kill with ctrl-c.
+        A multi-threaded process that plans with both left and right arms.
+        Each arm uses a online hybrid RRT-JT/Randomized IK planner that will essentially loop forever,
+        receiving each latest goal and planning for that goal once it finishes the current planner session.
+        The process can be killed with ctrl-c and the ros.on_shutdown callback should be set to stop the robot joints
+        if this happens. The created RRTs may be saved to disk.
         """
-        while True:
+        while True and not rospy.is_shutdown():
             left_rrt = None
             if self.left_goal is not None:
                 print "left goal: " + str(self.left_goal)
@@ -371,7 +364,8 @@ class Merry:
 
     def approach_single_goal(self, side, kin):
         """
-        Attempts to successfully visit the goal point using the IK solver.
+        Attempts to successfully visit the goal point using the straight-line IK solver. This will currently
+        loop forever but will receive the latest goal and retry for solutions on-demand when dynamic-planning is desired
         :param side: the arm side to use
         :param kin: the KDLIKSolver instance
         :return: status of attempt to approach the goal point
@@ -380,7 +374,7 @@ class Merry:
         # approach the goal points
         goal_met = False
         while goal_met is False and status == 0:
-            goal = self.get_goal(side)
+            goal = self.get_goal_pose(side)
             # obstacles = None
             # obstacles = h.get_critical_points_of_obstacles(self)
             # rospy.sleep(1)
@@ -404,6 +398,13 @@ class Merry:
         return status
 
     def joint_state_cb(self, data):
+        """
+        Callback for joint states that store position, velocity and effort values for each named joint on the robot.
+        A joint_states dictionary is created in this class. The mapping is as follows:
+            joint_states = dict
+            joint_states[JOINT_NAME][<position, velocity, or effort string>] = VALUE
+        :param data: the joint state data received from Baxter
+        """
         names = data.name
         positions = data.position
         velocities = data.velocity
@@ -415,6 +416,14 @@ class Merry:
             self.joint_states[names[i]]["effort"] = efforts[i]
 
     def interactive_marker_cb(self, feedback):
+        """
+        Callback for the interactive marker feedback data including the latest pose of the marker.
+        This will determine if the feedback is from the left or right marker given the name,
+        then the left or right goal will be updated, i.e. left_goal. Subsequently, the left or right goal array,
+        aka 7x1 numpy goal vector, will be set, i.e. left_goal_arr. Then, the left or right rrt is updated with
+        the latest goal that side.
+        :param feedback: the Pose message from the interactive marker
+        """
         # store feedback pose as goal
         goal = feedback.pose
 
@@ -438,20 +447,26 @@ class Merry:
         return joint_angles
 
     def get_joint_velocities(self, side="right"):
-        """Gets the joint angle dictionary of the specified arm side."""
+        """Gets the joint velocity dictionary of the specified arm side."""
         joint_velocities = self.right_arm.joint_velocities() if side is "right" else self.left_arm.joint_velocities()
         return joint_velocities
 
     def get_angles_dict(self, angles_list, side):
-        i = 0
-        angles_dict = dict()
+        """
+        Gets the joint angles dictionary from the provided ordered angles list from base to end effector by using
+        the Baxter joint names list for that side and mapping the contents of the list to the dictionary by name.
+        :param angles_list: the ordered list of angles from base to end effector
+        :param side: the side arm to map the angles list to in a dictionary
+        """
         joint_names = self.right_arm.joint_names() if side is "right" else self.left_arm.joint_names()
-        for name in joint_names:
-            angles_dict[name] = angles_list[i]
-            i += 1
-        return angles_dict
+        return {name: angle for name, angle in joint_names, angles_list} \
+            if len(joint_names) == len(angles_list) else dict()
 
     def clean_shutdown(self):
+        """
+        The clean shutdown method, important for stopping the robot arms from moving after shutdown.
+        :return: a placeholder True value for a more advanced error-handling system
+        """
         print("\nExiting example...")
         if not self._init_state:
             print("stopping robot...")
