@@ -145,6 +145,7 @@ class RRT:
         self.add_nodes(Q_new)
 
     def ik_extend_randomly(self, curr_pos, dist_thresh, offset=0.1):
+        # TODO modify to start randomly near goal then move away from goal if no solns present
         # returns the nearest distance to goal from the last node added by this method
         # only add one node via random soln for now
         # first = True
