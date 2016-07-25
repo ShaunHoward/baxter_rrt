@@ -26,17 +26,18 @@ def ik_soln_exists(goal_pose, kin):
 
 class RRT:
     """
-    Class for Shaun Howard's online hybrid RRT-JT/Random IK joint angle planner.
+    Class for Shaun Howard's online hybrid RRT-JT/Random IK joint angle planner for Merry, the Baxter robot
+    at Case Western Reserve University. Designed for the EECS 499 Algorithmic Robotics class in Spring/Summer 2016.
     """
 
-    def __init__(self, q_start, p_goal, kin_solver, side, joint_names, obstacles, exec_angles_method):
+    def __init__(self, q_start, goal_pose, kin_solver, side, joint_names, obstacles, exec_angles_method):
         """
-        Constructor for RRT. Accepts a numpy array of starting angles, probability to approach the goal in a straight
-        line, the kinematics solver instance for the RRT side arm, an ordered list of joint_names from base to end
-        effector, a list of obstacle points that should not include the current arm being planned for, and the method to
-        execute the joint angles from the Merry object instance used to create this RRT instance.
+        Constructor for RRT. Accepts a numpy array of starting angles, the goal pose, the kinematics solver instance
+        for the RRT side arm, an ordered list of joint_names from base to end effector, a list of obstacle points that
+        should not include the current arm being planned for, and the method to execute the joint angles from the
+        Merry object instance used to create this RRT instance.
         :param q_start: 7x1 numpy vector of starting joint angles
-        :param p_goal: probability to approach goal with random straight-line IK goal planner
+        :param goal_pose: the goal pose for the end effector
         :param kin_solver: the KDL kinematics solver instance
         :param side: the side, left or right, of arm to plan for
         :param joint_names: the ordered list of joint names from base to end effector
@@ -45,7 +46,11 @@ class RRT:
         """
         self.kin = kin_solver
         self.q_start = q_start
-        self.update_goal(p_goal)
+        # define goals
+        self.x_goal = None
+        self.goal_pose = None
+        # update the goals
+        self.update_goal(goal_pose)
         self.nodes = []
         self.side = side
         self.collision_checker = CollisionChecker([], self.kin)
@@ -53,10 +58,6 @@ class RRT:
         self.obstacles = obstacles
         self.joint_names = joint_names
         self.exec_angles_method = exec_angles_method
-
-        # define goals
-        self.x_goal = None
-        self.p_goal = None
 
     def add_nodes(self, nodes_to_add):
         self.nodes.extend(nodes_to_add)
@@ -67,7 +68,7 @@ class RRT:
         return self.nodes[-1]
 
     def goal_pose(self):
-        return self.p_goal
+        return self.goal_pose
 
     def goal_node(self):
         return self.x_goal
@@ -97,9 +98,9 @@ class RRT:
         # note: obstacles should be and are assumed to be sorted by distance from base link
         self.obstacles = np.mat(new_obs)
 
-    def update_goal(self, p_goal):
-        self.x_goal = h.pose_to_7x1_vector(p_goal)
-        self.p_goal = p_goal
+    def update_goal(self, goal_pose):
+        self.x_goal = h.pose_to_7x1_vector(goal_pose)
+        self.goal_pose = goal_pose
         print "updating rrt goal"
 
     def exec_angles(self, q):
