@@ -1,6 +1,8 @@
 import numpy as np
 import helpers as h
 
+from planner.collision_checker import CollisionChecker
+
 __author__ = "Shaun Howard (smh150@case.edu)"
 
 
@@ -46,6 +48,7 @@ class RRT:
         self.update_goal(p_goal)
         self.nodes = []
         self.side = side
+        self.collision_checker = CollisionChecker([], self.kin)
         # note: obstacles should be and are assumed to be sorted by distance from base link
         self.obstacles = obstacles
         self.joint_names = joint_names
@@ -72,6 +75,9 @@ class RRT:
     def goal_point(self):
         return self.goal_node()[:3]
 
+    def fwd_kin(self, q_list):
+        return self.kin.solve_fwd_kin(q_list)
+
     def dist(self, start, stop):
         return np.linalg.norm(stop - start)
 
@@ -87,15 +93,6 @@ class RRT:
     def workspace_delta(self, x_curr):
         return (self.x_goal - x_curr)[:6]
 
-    def fwd_kin(self, q_list):
-        return self.kin.solve_fwd_kin(q_list)
-
-    def joint_fwd_kin(self, q_list, end_link):
-        return self.kin.joint_fwd_kin(q_list, "base", end_link)
-
-    def fwd_kin_all(self, q_list):
-        return self.kin.fwd_kin_all(q_list)
-
     def update_obstacles(self, new_obs):
         # note: obstacles should be and are assumed to be sorted by distance from base link
         self.obstacles = np.mat(new_obs)
@@ -104,53 +101,6 @@ class RRT:
         self.x_goal = h.pose_to_7x1_vector(p_goal)
         self.p_goal = p_goal
         print "updating rrt goal"
-
-    def _check_collision(self, x_3x1, avoidance_radius):
-        """
-        Determines if the 3x1 point vector provided collides with any obstacles within the specified
-        avoidance radius.
-        :param x_3x1: the 3x1 numpy point vector containin x,y,z
-        :param avoidance_radius: the radius in meters to avoid obstacles around point with
-        :return: True if no collisions of 3x1 point, False otherwise
-        """
-        if len(self.obstacles) > 1:
-            for obs_point in self.obstacles[:]:
-                dist = np.linalg.norm(obs_point - x_3x1)
-                if dist < avoidance_radius:
-                    # any obstacles outside of avoidance radius of robot since obstacles are sorted by distance
-                    return False
-        return True
-
-    def _check_collisions(self, link_pose_mat, avoidance_radius):
-        """
-        Determines if any of the arm links will intersect with objects within the provided
-        avoidance radius (in meters). Returns True if there are no collisions along the specified arm link positions,
-        returns False otherwise.
-        :param link_pose_mat: the matrix of 3x1 point vectors of an arm on the robot
-        :param avoidance_radius: the radius in meters to avoid obstacles within around the arm links
-        :return: True if there are no collisions, False otherwise
-        """
-        for link_pose in link_pose_mat:
-            # only use x,y,z from link pose
-            x_3x1 = np.array((link_pose[0, 0], link_pose[0, 1], link_pose[0, 2]))
-            if not self._check_collision(x_3x1, avoidance_radius):
-                return False
-        return True
-
-    def collision_free(self, q_new_angles, avoidance_radius=0.2):
-        """
-        Determines if the provided vector of new angles are collision free around the given
-        avoidance radius.
-        :param q_new_angles: the 7x1 numpy vector of angles to check for collision, ordered from base to end effector
-        :param avoidance_radius: the obstacle avoidance radius in meters
-        :return: whether the arm will collide with obstacles when going to the specified q_new_angles
-        """
-        # get the poses of all links in the arm
-        # only take from the second on since the first two are always the same at 0,0,0
-        link_pose_matrix = self.fwd_kin_all(q_new_angles)
-        selected_collision_end_links = link_pose_matrix[len(link_pose_matrix)-4:]
-        # check collisions for each link in the arm
-        return self._check_collisions(selected_collision_end_links, avoidance_radius)
 
     def exec_angles(self, q):
         """
@@ -187,7 +137,7 @@ class RRT:
             d_q = np.array(d_q[0])
             q_new = q_old + d_q
             curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
-            if curr_dist_to_goal < prev_dist_to_goal and self.collision_free(q_new):
+            if curr_dist_to_goal < prev_dist_to_goal and self.collision_checker.collision_free(q_new):
                 print "jacobian goal step: curr dist to goal: " + str(curr_dist_to_goal)
                 self.exec_angles(q_new)
                 Q_new.append(q_new)
@@ -219,8 +169,8 @@ class RRT:
         prev_dist_to_goal = self.dist_to_goal()
         num_tries_left = num_tries
         first = True
-        # start with soln at goal and work outward until soln available
-        curr_diameter = 0
+        # start with soln at offset and work away from goal
+        curr_diameter = offset
         while prev_dist_to_goal > dist_thresh and num_tries_left > 0:
             goal_pose = self.goal_pose()
             if first:
@@ -240,7 +190,7 @@ class RRT:
                     # else:
                     #     next_point.append(h.generate_random_decimal(goal_coord-offset, curr_coord+offset))
             print "looking for ik soln..."
-            if self._check_collision(next_point, avoidance_radius):
+            if self.collision_checker.check_collision(next_point, avoidance_radius):
                 next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
                 solved, q_new = ik_soln_exists(next_pose, self.kin)
                 if solved:
@@ -248,7 +198,7 @@ class RRT:
                     curr_pos = next_point
                     # only add the point as a soln if the distance from this point to goal is less than that from the
                     # last end effector point
-                    if curr_dist_to_goal < prev_dist_to_goal and self.collision_free(q_new):
+                    if curr_dist_to_goal < prev_dist_to_goal and self.collision_checker.collision_free(q_new):
                         print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
                         self.exec_angles(q_new)
                         Q_new.append(q_new)

@@ -458,8 +458,13 @@ class Merry:
         :param side: the side arm to map the angles list to in a dictionary
         """
         joint_names = self.right_arm.joint_names() if side is "right" else self.left_arm.joint_names()
-        return {name: angle for name, angle in joint_names, angles_list} \
-            if len(joint_names) == len(angles_list) else dict()
+        angles_dict = dict()
+        if len(joint_names) == len(angles_list):
+            i = 0
+            for name in joint_names:
+                angles_dict[name] = angles_list[i]
+                i += 1
+        return angles_dict
 
     def clean_shutdown(self):
         """
