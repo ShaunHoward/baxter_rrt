@@ -61,8 +61,8 @@ class KinectTransformer:
             collides_with_arm = self.right_cc.check_collision(point, collision_radius)
 
         # convert rgb number to hsv
-        hsv_vec = np.array(cs.rgb_to_hsv(*rgb_tuple))
-
+        hsv_vec = np.array(h.rgb2hsv(rgb_tuple[0], rgb_tuple[1], rgb_tuple[2]))
+        # TODO look at: http://stackoverflow.com/questions/30331944/finding-red-color-using-python-opencv
         # use custom port of open-cv c++ code
         # inRange(hsv_image, cv::Scalar(0, 100, 100), cv::Scalar(10, 255, 255), lower_red_hue_range);
         is_lower_red_hue_range = 0 < hsv_vec[0] < 10 and 100 < hsv_vec[1] < 255 and 100 < hsv_vec[2] < 255
