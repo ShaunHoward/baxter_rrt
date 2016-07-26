@@ -1,3 +1,4 @@
+import colorsys as cs
 import helpers as h
 import math
 import numpy as np
@@ -15,38 +16,94 @@ __author__ = "Shaun Howard (smh150@case.edu)"
 
 
 class KinectTransformer:
-    # MAKE SURE KINECT STARTS WITH BAXTER_WORLD LAUNCH
+    """
+    Class for the Kinect transformation and filtration system that subscribes to kinect/depth/points,
+    transforms said points from kinect_pc_frame into base frame, unpacks the rgb values for all points, and
+    filters two clouds for left and right arms based on color and distance from base/arm links using fwd kinematics.
+    NOTE: MAKE SURE KINECT STARTS WITH BAXTER_WORLD LAUNCH!
+    """
 
     def __init__(self):
+        """
+        Creates subscriber for kinect point cloud with a message queue size of 10.
+        Creates publishers for left and right arm obstacles cloud, with arm filtered out and queue size of 10.
+        Instantiates a transform listener for point cloud transformations.
+        Instantiates CollisionChecker instances for both arms, utilizing the custom KDL IK solver.
+        """
         rospy.init_node("kinect_transformer")
         self.kinect_depth_sub = rospy.Subscriber("kinect/depth/points", pc2.PointCloud2, self.kinect_cb, queue_size=10)
         self.left_obs_pub = rospy.Publisher("left_arm_obstacles", PointCloud, queue_size=10)
         self.right_obs_pub = rospy.Publisher("right_arm_obstacles", PointCloud, queue_size=10)
         self.tf = tf.TransformListener()
         self.closest_rgb_points = []
-        # create kinematics solvers for both the left and right arms
-        self.left_kinematics = KDLIKSolver("left")
-        self.right_kinematics = KDLIKSolver("right")
         # create collision checkers with the left and right kin solver instances
-        self.left_cc = CollisionChecker([], self.left_kinematics)
-        self.right_cc = CollisionChecker([], self.right_kinematics)
+        self.left_cc = CollisionChecker([], KDLIKSolver("left"))
+        self.right_cc = CollisionChecker([], KDLIKSolver("right"))
+
+    def part_of_arm(self, point, rgb_tuple, side, collision_radius=0.05):
+        """
+        Checks if the given point is a part of the side arm specified.
+        Uses the color provided in the rgb tuple to determine if the point is red, using both lower and upper red hues.
+        Checks the point for collisions with the arm using the CollisionChecker class.
+        Returns whether the point is a part of the sie arm specified based on color and collision with specified arm.
+        :param point: the 3x1 point array
+        :param rgb_tuple: the r,g,b tuple describing the color of the point
+        :param side: the side arm to determine if point is part of
+        :param collision_radius: the radius around arm links to consider in determining point containment of
+        configuration space, another magic number
+        :return: if the point is in fact a red point that collides with the specified arm
+        """
+        collides_with_arm = False
+        if side == "left":
+            collides_with_arm = self.left_cc.check_collision(point, collision_radius)
+        elif side == "right":
+            collides_with_arm = self.right_cc.check_collision(point, collision_radius)
+
+        # convert rgb number to hsv
+        hsv_vec = np.array(cs.rgb_to_hsv(*rgb_tuple))
+
+        # use custom port of open-cv c++ code
+        # inRange(hsv_image, cv::Scalar(0, 100, 100), cv::Scalar(10, 255, 255), lower_red_hue_range);
+        is_lower_red_hue_range = 0 < hsv_vec[0] < 10 and 100 < hsv_vec[1] < 255 and 100 < hsv_vec[2] < 255
+
+        # use custom port of open-cv c++ code
+        # cv::inRange(hsv_image, cv::Scalar(160, 100, 100), cv::Scalar(179, 255, 255), upper_red_hue_range)
+        is_upper_red_hue_range = 160 < hsv_vec[0] < 179 and 100 < hsv_vec[1] < 255 and 100 < hsv_vec[2] < 255
+        is_red = is_lower_red_hue_range or is_upper_red_hue_range
+        # the point is considered part of the arm if it is red and collides with the arm
+        return is_red and collides_with_arm
 
     def filter_out_arm(self, rgb_points, side):
-        # TODO use color points as filter
+        """
+        Filters out the points that are part of the arm for the given side.
+        Returns a list of points containing only those that are thought not to represent the "side" arm.
+        :param rgb_points: the (rgb_tuple, point) tuple list that represents the rgb points of environment
+        :param side: the side to filter out of obstacles
+        :return: the filtered points list with points ONLY
+        """
         new_points_wo_rgb_and_arm = []
-        arm_points = []
+        # store only new points, not part of current side arm
+        filtered_points = []
+        # populate filtered points list with points not including the current arm based on distance and color
         for color, point in rgb_points:
-            rgb_tuple = (((color >> 16) & 0xff), ((color >> 8) & 0xff), (color & 0xff))
-            new_points_wo_rgb_and_arm.append(point)
+            rgb_tuple = h.rgb_float_to_tuple(color)
+            if not self.part_of_arm(point, rgb_tuple, side):
+                filtered_points.append(point)
         return new_points_wo_rgb_and_arm
 
-    def build_and_publish_obstacle_point_clouds(self, points):
+    def build_and_publish_obstacle_point_clouds(self, reachable_workspace_points):
+        """
+        Builds and publishes obstacles point clouds for both the left and right Baxter arms.
+        Publishes obstacle clouds in the base from, as they are transformed and filtered points.
+        :param reachable_workspace_points: the overall environment points list, filtered and transformed to base frame,
+        in reachable workspace
+        """
         obstacle_cloud = PointCloud()
         header = std_msgs.msg.Header()
         header.stamp = rospy.Time.now()
-        header.frame_id = 'kinect_pc_frame'
+        header.frame_id = 'base'
         obstacle_cloud.header = header
-        left_filtered_pts = self.filter_out_arm(points, "left")
+        left_filtered_pts = self.filter_out_arm(reachable_workspace_points, "left")
         # update collision checker obstacle list
         self.left_cc.update_obstacles(left_filtered_pts)
         for point in left_filtered_pts:
@@ -57,9 +114,9 @@ class KinectTransformer:
         obstacle_cloud = PointCloud()
         header = std_msgs.msg.Header()
         header.stamp = rospy.Time.now()
-        header.frame_id = 'kinect_pc_frame'
+        header.frame_id = 'base'
         obstacle_cloud.header = header
-        right_filtered_pts = self.filter_out_arm(points, "right")
+        right_filtered_pts = self.filter_out_arm(reachable_workspace_points, "right")
         # update collision checker obstacle list
         self.right_cc.update_obstacles(right_filtered_pts)
         for point in right_filtered_pts:
@@ -67,13 +124,14 @@ class KinectTransformer:
         print "publishing new right obstacle cloud!"
         self.right_obs_pub.publish(obstacle_cloud)
 
-    def kinect_cb(self, data, source="kinect_pc_frame", dest="base", min_dist=0.1, max_dist=1.5, min_height=0.4):
+    def kinect_cb(self, data, source="kinect_pc_frame", dest="base", min_dist=0.1, max_dist=1.1, min_height=-1.25):
         """
         Receives kinect points from the kinect subscriber linked to the publisher stream.
         Important notes for unpacking floats: http://www.pcl-users.org/How-to-extract-rgb-data-from-PointCloud2-td3203403.html
         Format of PointCloud2 msg is X, Y, Z, RGB -- 4 floating point numbers.
         pc2.read_points handles this for us.
         The 4th value must be unpacked to determine the actual RGB color.
+        NOTE: min_height is a magic number that is the z value at the wheel base of the Baxter simulator robot.
         """
         # TODO add left and right arm points to filter out of published "obstacles" per side
         points = [p for p in pc2.read_points(data, skip_nans=True)]

@@ -3,6 +3,7 @@ import copy
 import numpy as np
 import random
 import rospy
+import struct
 
 from geometry_msgs.msg import (
     Pose,
@@ -278,6 +279,23 @@ def transform_pcl2(tf_, target_frame, source_frame, point_cloud, duration=2):
         return [Point(*(tuple(np.dot(mat44, np.array([p[0], p[1], p[2], p[3]])))[:3])) for p in point_cloud]
     else:
         return []
+
+
+def rgb_float_to_tuple(color):
+    """
+    Converts rgb float color to a tuple using bit-shifts.
+    First packs the float to obtain bits, then performs shifts to get 3 rgb values.
+    :param color: the float number to get rgb values of
+    :return: the rgb values for given color float
+    """
+    rgb_bits = float_to_bits(color)
+    return ((rgb_bits >> 16) & 0xff), ((rgb_bits >> 8) & 0xff), (rgb_bits & 0xff)
+
+
+# http://stackoverflow.com/questions/14431170/get-the-bits-of-a-float-in-python
+def float_to_bits(f):
+    s = struct.pack('>f', f)
+    return struct.unpack('>l', s)[0]
 
 # def move_to_start(self, start_angles=None):
 #     print("Moving the {0} arm to start pose...".format(self._limb))
