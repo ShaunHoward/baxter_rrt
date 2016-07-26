@@ -41,7 +41,7 @@ class KinectTransformer:
         self.left_cc = CollisionChecker([], KDLIKSolver("left"))
         self.right_cc = CollisionChecker([], KDLIKSolver("right"))
 
-    def part_of_arm(self, point, rgb_tuple, side, collision_radius=0.05):
+    def part_of_arm(self, point, rgb_tuple, side, collision_radius=0.1):
         """
         Checks if the given point is a part of the side arm specified.
         Uses the color provided in the rgb tuple to determine if the point is red, using both lower and upper red hues.
@@ -124,7 +124,7 @@ class KinectTransformer:
         print "publishing new right obstacle cloud!"
         self.right_obs_pub.publish(obstacle_cloud)
 
-    def kinect_cb(self, data, source="kinect_pc_frame", dest="base", min_dist=0.1, max_dist=1.1, min_height=-1.25):
+    def kinect_cb(self, data, source="kinect_pc_frame", dest="base", min_dist=0.1, max_dist=1.5, min_height=-1.25):
         """
         Receives kinect points from the kinect subscriber linked to the publisher stream.
         Important notes for unpacking floats: http://www.pcl-users.org/How-to-extract-rgb-data-from-PointCloud2-td3203403.html
