@@ -26,14 +26,15 @@ class KinectTransformer:
     def __init__(self):
         """
         Creates subscriber for kinect point cloud with a message queue size of 10.
-        Creates publishers for left and right arm obstacles cloud, with arm filtered out and queue size of 10.
+        Creates publishers for left and right arm obstacles cloud, with arm filtered out and queue size of 10. These
+        publishers latch for the most up-to-date message to be received upon subscription.
         Instantiates a transform listener for point cloud transformations.
         Instantiates CollisionChecker instances for both arms, utilizing the custom KDL IK solver.
         """
         rospy.init_node("kinect_transformer")
         self.kinect_depth_sub = rospy.Subscriber("kinect/depth/points", pc2.PointCloud2, self.kinect_cb, queue_size=10)
-        self.left_obs_pub = rospy.Publisher("left_arm_obstacles", PointCloud, queue_size=10)
-        self.right_obs_pub = rospy.Publisher("right_arm_obstacles", PointCloud, queue_size=10)
+        self.left_obs_pub = rospy.Publisher("left_arm_obstacles", PointCloud, queue_size=10, latch=True)
+        self.right_obs_pub = rospy.Publisher("right_arm_obstacles", PointCloud, queue_size=10, latch=True)
         self.tf = tf.TransformListener()
         self.closest_rgb_points = []
         # create collision checkers with the left and right kin solver instances
