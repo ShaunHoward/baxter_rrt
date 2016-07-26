@@ -71,6 +71,10 @@ class KinectTransformer:
         # cv::inRange(hsv_image, cv::Scalar(160, 100, 100), cv::Scalar(179, 255, 255), upper_red_hue_range)
         is_upper_red_hue_range = 160 < hsv_vec[0] < 179 and 100 < hsv_vec[1] < 255 and 100 < hsv_vec[2] < 255
         is_red = is_lower_red_hue_range or is_upper_red_hue_range
+        if collides_with_arm:
+            print "new arm point rgb and hsv values: "
+            print rgb_tuple
+            print hsv_vec
         # the point is considered part of the arm if it is red and collides with the arm
         return is_red and collides_with_arm
 
@@ -124,7 +128,7 @@ class KinectTransformer:
         print "publishing new right obstacle cloud!"
         self.right_obs_pub.publish(obstacle_cloud)
 
-    def kinect_cb(self, data, source="kinect_pc_frame", dest="base", min_dist=0.1, max_dist=1.5, min_height=-1.25):
+    def kinect_cb(self, data, source="kinect_pc_frame", dest="base", min_dist=0.1, max_dist=1.45, min_height=-1.25):
         """
         Receives kinect points from the kinect subscriber linked to the publisher stream.
         Important notes for unpacking floats: http://www.pcl-users.org/How-to-extract-rgb-data-from-PointCloud2-td3203403.html
@@ -157,4 +161,5 @@ class KinectTransformer:
 
 if __name__ == "__main__":
     KinectTransformer()
-    rospy.spin()
+    while not rospy.is_shutdown():
+        rospy.spin()
