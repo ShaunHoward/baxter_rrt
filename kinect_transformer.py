@@ -79,9 +79,8 @@ class KinectTransformer:
         Returns a list of points containing only those that are thought not to represent the "side" arm.
         :param rgb_points: the (rgb_tuple, point) tuple list that represents the rgb points of environment
         :param side: the side to filter out of obstacles
-        :return: the filtered points list with points ONLY
+        :return: the filtered 3x1 vector points list with points ONLY
         """
-        new_points_wo_rgb_and_arm = []
         # store only new points, not part of current side arm
         filtered_points = []
         # populate filtered points list with points not including the current arm based on distance and color
@@ -89,7 +88,7 @@ class KinectTransformer:
             rgb_tuple = h.rgb_float_to_tuple(color)
             if not self.part_of_arm(point, rgb_tuple, side):
                 filtered_points.append(point)
-        return new_points_wo_rgb_and_arm
+        return filtered_points
 
     def build_and_publish_obstacle_point_clouds(self, reachable_workspace_points):
         """
@@ -149,8 +148,8 @@ class KinectTransformer:
             i += 1
         # sort points by distance from robot base
         sorted_pts = np.sort(np.array(points_list), 0)
-        # extract only the closest points, in order of dist from robot base
-        self.closest_rgb_points = [(color, point) for dist, point, color in sorted_pts]
+        # extract only the closest points, in order of dist from robot base, and add color and point vector to list
+        self.closest_rgb_points = [(color, h.point_to_3x1_vector(point)) for dist, point, color in sorted_pts]
         self.build_and_publish_obstacle_point_clouds(self.closest_rgb_points)
         if len(self.closest_rgb_points) > 0:
             print "kinect cb: there are this many close points: " + str(len(self.closest_rgb_points))
