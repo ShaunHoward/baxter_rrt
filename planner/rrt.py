@@ -67,7 +67,7 @@ class RRT:
             return self.q_start
         return self.nodes[-1]
 
-    def goal_pose(self):
+    def get_goal_pose(self):
         return self.goal_pose
 
     def goal_node(self):
@@ -145,7 +145,7 @@ class RRT:
                 q_old = q_new
                 prev_dist_to_goal = curr_dist_to_goal
             else:
-                print "jac: could not find collision-free soln"
+                print "jac: could not find close enough or collision-free soln"
                 break
         self.add_nodes(Q_new)
 
@@ -173,7 +173,7 @@ class RRT:
         # start with soln at offset and work away from goal
         curr_diameter = offset
         while prev_dist_to_goal > dist_thresh and num_tries_left > 0:
-            goal_pose = self.goal_pose()
+            goal_pose = self.get_goal_pose()
             if first:
                 first = False
                 # first, try the goal point
@@ -185,11 +185,10 @@ class RRT:
                     curr_coord = curr_pos[i]
                     goal_coord = goal_arr[i]
                     radius = curr_diameter/2.0
-                    next_point.append(h.generate_random_decimal(curr_coord - radius, goal_coord + radius))
-                    # if curr_coord < goal_coord:
-                    #     next_point.append(h.generate_random_decimal(curr_coord-offset, goal_coord+offset))
-                    # else:
-                    #     next_point.append(h.generate_random_decimal(goal_coord-offset, curr_coord+offset))
+                    if curr_coord < goal_coord:
+                        next_point.append(h.generate_random_decimal(curr_coord-radius, goal_coord+radius))
+                    else:
+                        next_point.append(h.generate_random_decimal(goal_coord-radius, curr_coord+radius))
             print "looking for ik soln..."
             if self.collision_checker.check_collision(next_point, avoidance_radius):
                 next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)

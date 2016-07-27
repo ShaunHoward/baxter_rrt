@@ -6,7 +6,7 @@ import rospy
 import std_msgs.msg
 import tf
 
-from geometry_msgs.msg import Point32
+from geometry_msgs.msg import Point32, Point
 from sensor_msgs.msg import PointCloud
 from sensor_msgs import point_cloud2 as pc2
 from solver.ik_solver import KDLIKSolver
@@ -140,6 +140,7 @@ class KinectTransformer:
         # TODO add left and right arm points to filter out of published "obstacles" per side
         points = [p for p in pc2.read_points(data, skip_nans=True)]
         transformed_points = h.transform_pcl2(self.tf, dest, source, points)
+        transformed_points = [Point(p.x, p.y, p.z+1.5) for p in transformed_points]
         points_list = []
         # extract only colors, in order, from points list
         colors = [p[3] for p in points]
