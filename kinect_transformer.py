@@ -71,7 +71,7 @@ class KinectTransformer:
         # cv::inRange(hsv_image, cv::Scalar(160, 100, 100), cv::Scalar(179, 255, 255), upper_red_hue_range)
         is_upper_red_hue_range = 160 < hsv_vec[0] < 179 and 100 < hsv_vec[1] < 255 and 100 < hsv_vec[2] < 255
         is_red = is_lower_red_hue_range or is_upper_red_hue_range
-        if collides_with_arm:
+        if collides_with_arm and is_red:
             print "new arm point rgb and hsv values: "
             print rgb_tuple
             print hsv_vec
@@ -89,7 +89,7 @@ class KinectTransformer:
         # store only new points, not part of current side arm
         filtered_points = []
         # populate filtered points list with points not including the current arm based on distance and color
-        for color, point in rgb_points:
+        for point, color in rgb_points:
             rgb_tuple = h.rgb_float_to_tuple(color)
             if not self.part_of_arm(point, rgb_tuple, side):
                 filtered_points.append(point)
@@ -138,24 +138,25 @@ class KinectTransformer:
         NOTE: min_height is a magic number that is the z value at the wheel base of the Baxter simulator robot.
         """
         # TODO add left and right arm points to filter out of published "obstacles" per side
-        points = [p for p in pc2.read_points(data, skip_nans=True)]
+        points = np.array([p for p in pc2.read_points(data, skip_nans=True)])
         transformed_points = h.transform_pcl2(self.tf, dest, source, points)
-        transformed_points = [Point(p.x, p.y, p.z+1.5) for p in transformed_points]
+        transformed_points = [h.point_to_3x1_vector(p) for p in transformed_points]
         points_list = []
         # extract only colors, in order, from points list
-        colors = [p[3] for p in points]
+        colors = points[:, 3]
         i = 0
         # construct tuples of format: (dist_to_robot, point, rgb_color)
         # filter points by parameter criteria
         for p in transformed_points:
-            dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)
-            if min_dist < dist < max_dist and p.z >= min_height:
+            dist = np.sqrt(p[0] ** 2 + p[1] ** 2 + p[2] ** 2)
+            if min_dist < dist < max_dist and p[2] >= min_height:
                 points_list.append((dist, p, colors[i]))
             i += 1
         # sort points by distance from robot base
-        sorted_pts = np.sort(np.array(points_list), 0)
+        # TODO sorted_pts = np.sort(points_list, 0)
+        sorted_pts = points_list
         # extract only the closest points, in order of dist from robot base, and add color and point vector to list
-        self.closest_rgb_points = [(color, h.point_to_3x1_vector(point)) for dist, point, color in sorted_pts]
+        self.closest_rgb_points = [(point, color) for dist, point, color in sorted_pts]
         self.build_and_publish_obstacle_point_clouds(self.closest_rgb_points)
         if len(self.closest_rgb_points) > 0:
             print "kinect cb: there are this many close points: " + str(len(self.closest_rgb_points))
