@@ -71,7 +71,7 @@ class CollisionChecker:
                 return False
         return True
 
-    def collision_free(self, q_new_angles, avoidance_radius=0.2):
+    def collision_free(self, q_new_angles, avoidance_radius=0.35):
         """
         Determines if the provided vector of new angles are collision free around the given
         avoidance radius.

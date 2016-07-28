@@ -41,7 +41,7 @@ class KinectTransformer:
         self.left_cc = CollisionChecker([], KDLIKSolver("left"))
         self.right_cc = CollisionChecker([], KDLIKSolver("right"))
 
-    def part_of_arm(self, point, rgb_tuple, side, collision_radius=0.1):
+    def part_of_arm(self, point, rgb_tuple, side, collision_radius=0.35):
         """
         Checks if the given point is a part of the side arm specified.
         Uses the color provided in the rgb tuple to determine if the point is red, using both lower and upper red hues.
@@ -60,21 +60,13 @@ class KinectTransformer:
         elif side == "right":
             collides_with_arm = self.right_cc.check_collision(point, collision_radius)
 
-        # convert rgb number to hsv
-        hsv_vec = np.array(h.rgb2hsv(rgb_tuple[0], rgb_tuple[1], rgb_tuple[2]))
-        # TODO look at: http://stackoverflow.com/questions/30331944/finding-red-color-using-python-opencv
-        # use custom port of open-cv c++ code
-        # inRange(hsv_image, cv::Scalar(0, 100, 100), cv::Scalar(10, 255, 255), lower_red_hue_range);
-        is_lower_red_hue_range = 0 < hsv_vec[0] < 10 and 100 < hsv_vec[1] < 255 and 100 < hsv_vec[2] < 255
-
-        # use custom port of open-cv c++ code
-        # cv::inRange(hsv_image, cv::Scalar(160, 100, 100), cv::Scalar(179, 255, 255), upper_red_hue_range)
-        is_upper_red_hue_range = 160 < hsv_vec[0] < 179 and 100 < hsv_vec[1] < 255 and 100 < hsv_vec[2] < 255
-        is_red = is_lower_red_hue_range or is_upper_red_hue_range
-        if collides_with_arm and is_red:
-            print "new arm point rgb and hsv values: "
-            print rgb_tuple
-            print hsv_vec
+        is_red = False
+        if collides_with_arm:
+            actual_color, closest_color = h.get_color_name(rgb_tuple)
+            is_red = "red" in closest_color.lower()
+            if is_red:
+                print "new arm point rgb and hsv values: "
+                print rgb_tuple
         # the point is considered part of the arm if it is red and collides with the arm
         return is_red and collides_with_arm
 
@@ -128,7 +120,7 @@ class KinectTransformer:
         print "publishing new right obstacle cloud!"
         self.right_obs_pub.publish(obstacle_cloud)
 
-    def kinect_cb(self, data, source="kinect_pc_frame", dest="base", min_dist=0.1, max_dist=1.45, min_height=-1.25):
+    def kinect_cb(self, data, source="kinect_pc_frame", dest="base", min_dist=0.1, max_dist=1.45, min_height=-1):
         """
         Receives kinect points from the kinect subscriber linked to the publisher stream.
         Important notes for unpacking floats: http://www.pcl-users.org/How-to-extract-rgb-data-from-PointCloud2-td3203403.html
