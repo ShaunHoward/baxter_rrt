@@ -50,8 +50,14 @@ class KDLIKSolver:
     def fwd_kin_all(self, q_list):
         return self.solver.forward_all(q_list)
 
+    def jacobian(self, q_list):
+        return self.solver.jacobian(q_list)
+
     def jacobian_transpose(self, q_list):
         return self.solver.jacobian(q_list).T
+
+    def jacobian_pinv(self, q_list):
+        return np.linalg.pinv(self.solver.jacobian(q_list))
 
 
 class RethinkIKSolver:

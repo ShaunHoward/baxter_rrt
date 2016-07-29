@@ -13,7 +13,7 @@
 
 \begin{document}
 
-\title{Randomized Potential Field Motion Planning for Baxter Dual Arm Manipulator}
+\title{Online Jacobian and Randomized-IK RRT Path Planning for Baxter Dual Arm Manipulation}
 
 \author{
  \IEEEauthorblockN{Shaun Howard}
@@ -21,6 +21,7 @@
                    Case Western Reserve University\\ 
                    Cleveland, Ohio 44106\\
                    Email: smh150@case.edu}
+}
 
 % make the title area
 \maketitle
@@ -28,15 +29,25 @@
 % As a general rule, do not put math, special symbols or citations
 % in the abstract
 \begin{abstract}
-
+Within this paper a more flexible solution to the path planning problem for multi-arm robots is presented. Modifications were made to the concept of a Rapidly-
+exploring Random Tree necessary to fuse several successful Jacobian-based techniques for redundant manipulator planning. This hybrid RRT planner uses the fusion 
+of Jacobian-Transpose and Jacobian-Pseudoinverse-based methods for goal-directed path planning. For random path planning, a IK straight-line solver is used to 
+sample solutions at random points within growing radii from the goal center until a goal is found or the maximum number of retires is met. The pairing of the 
+hybrid RRT and random IK-based planner methods allow solutions to be found very quickly if possible, otherwise, the planner will get as close as possible over 
+time or a minimum distance threshold is met. This method was found to perform better than the Jacobian-Transpose and IK-based approaches overall, although each 
+method has upsides and downsides. Rarely, if ever, does the planner get noticeably stuck in local minima unless a goal is impossible for the end effector to 
+reach. A Gazebo simulation paired with Rviz is used to examine custom implementations of the algorithms mentioned. A comparison is made between the methods used 
+during experimentation which reveals that the hybrid RRT planner is quicker than the other planning methods while balancing constraints and generating a viable solution to almost any problem within reach of the given end effector in use.
 \end{abstract}
 
 \section{Introduction} \label{Introduction}
 
+The concept of real-time path planning in robotics has stirred a lot of research in recent years. <author> 
+
 \begin{figure}
 \label{pic1} 
 \centering 
-\includegraphics[width=0.49\textwidth]{sim1}
+% \includegraphics[width=0.49\textwidth]{sim1}
 \caption{A squadron S of three TurtleBot 2's on a grid-based world attempt to estimate the position of R, the middle moving TurtleBot 2.}
 \end{figure}
 
