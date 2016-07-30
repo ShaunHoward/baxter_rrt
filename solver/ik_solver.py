@@ -59,6 +59,15 @@ class KDLIKSolver:
     def jacobian_pinv(self, q_list):
         return np.linalg.pinv(self.solver.jacobian(q_list))
 
+    def joints_in_limits(self, q_list):
+        return self.solver.joints_in_safe_limits(q_list)
+
+    def clip_joints_to_limits(self, q_list):
+        return self.solver.clip_joints_safe(q_list)
+
+    def workspace_delta(self, q_a, q_b):
+        return self.solver.difference_joints(q_a, q_b)
+
 
 class RethinkIKSolver:
 

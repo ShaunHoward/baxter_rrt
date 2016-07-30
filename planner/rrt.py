@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import helpers as h
 
@@ -145,7 +146,7 @@ class RRT:
                     J_T = np.linalg.pinv(J)
                 else:
                     J_T = J.T
-                direction = np.dot(J_T, np.dot(J, J_T)**-1)
+                direction = np.dot(J_T, np.dot(J, J_T)**-1) / 2
             else:
                 if use_pinv:
                     J_T = self.kin.jacobian_pinv(q_old)
@@ -156,7 +157,7 @@ class RRT:
             d_q = np.array(d_q[0])
             q_new = q_old + d_q
             curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
-            if curr_dist_to_goal < prev_dist_to_goal and math.abs(curr_dist_to_goal-prev_dist_to_goal) < max_dist_cap\
+            if curr_dist_to_goal < prev_dist_to_goal and math.fabs(curr_dist_to_goal-prev_dist_to_goal) < max_dist_cap\
                     and self.collision_checker.collision_free(q_new):
                 print "jacobian goal step: curr dist to goal: " + str(curr_dist_to_goal)
                 self.exec_angles(q_new)

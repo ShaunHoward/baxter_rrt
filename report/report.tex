@@ -13,7 +13,7 @@
 
 \begin{document}
 
-\title{Online Jacobian and Randomized-IK RRT Path Planning for Baxter Dual Arm Manipulation}
+\title{Online Jacobian and Randomized-IK RRT Path Planning for Baxter Dual Arm Manipulator}
 
 \author{
  \IEEEauthorblockN{Shaun Howard}
@@ -30,8 +30,8 @@
 % in the abstract
 \begin{abstract}
 Within this paper a more flexible solution to the path planning problem for multi-arm robots is presented. Modifications were made to the concept of a Rapidly-
-exploring Random Tree necessary to fuse several successful Jacobian-based techniques for redundant manipulator planning. This hybrid RRT planner uses the fusion 
-of Jacobian-Transpose and Jacobian-Pseudoinverse-based methods for goal-directed path planning. For random path planning, a IK straight-line solver is used to 
+exploring Random Tree necessary to fuse several successful Jacobian-based techniques together to provide reliable redundant manipulator planning. This hybrid 
+RRT planner uses the fusion of both the Jacobian-Transpose and Jacobian-Pseudoinverse-based methods for goal-directed path planning. For random path planning, a IK straight-line solver is used to 
 sample solutions at random points within growing radii from the goal center until a goal is found or the maximum number of retires is met. The pairing of the 
 hybrid RRT and random IK-based planner methods allow solutions to be found very quickly if possible, otherwise, the planner will get as close as possible over 
 time or a minimum distance threshold is met. This method was found to perform better than the Jacobian-Transpose and IK-based approaches overall, although each 
