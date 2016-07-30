@@ -45,31 +45,32 @@ class CollisionChecker:
         avoidance radius.
         :param x_3x1: the 3x1 numpy point vector containing x,y,z
         :param avoidance_radius: the radius in meters to avoid obstacles around point with
-        :return: True if no collisions of 3x1 point, False otherwise
+        :return: True if collision with 3x1 point, False otherwise
         """
         if len(self.obstacles) > 1:
             for obs_point in self.obstacles[:]:
                 dist = np.linalg.norm(obs_point - x_3x1)
                 if dist < avoidance_radius:
+                    print "dist: " + str(dist)
                     # a collision was found within the avoidance radius
-                    return False
-        return True
+                    return True
+        return False
 
     def _check_collisions(self, link_pose_mat, avoidance_radius):
         """
         Determines if any of the arm links will intersect with objects within the provided
-        avoidance radius (in meters). Returns True if there are no collisions along the specified arm link positions,
-        returns False otherwise.
+        avoidance radius (in meters). Returns True if there are collisions along the specified arm link positions,
+        False otherwise.
         :param link_pose_mat: the matrix of 3x1 point vectors of an arm on the robot
         :param avoidance_radius: the radius in meters to avoid obstacles within around the arm links
-        :return: True if there are no collisions, False otherwise
+        :return: True if there are collisions, False if there are not
         """
         for link_pose in link_pose_mat:
             # only use x,y,z from link pose
             x_3x1 = np.array((link_pose[0, 0], link_pose[0, 1], link_pose[0, 2]))
-            if not self.check_collision(x_3x1, avoidance_radius):
-                return False
-        return True
+            if self.check_collision(x_3x1, avoidance_radius):
+                return True
+        return False
 
     def collision_free(self, q_new_angles, avoidance_radius=0.35):
         """
@@ -80,8 +81,8 @@ class CollisionChecker:
         :return: whether the arm will collide with obstacles when going to the specified q_new_angles
         """
         # get the poses of all links in the arm
-        # only take from the second on since the first two are always the same at 0,0,0
+        # only take from the first on since the first is always the same, closest to 0,0,0
         link_pose_matrix = self.fwd_kin_all(q_new_angles)
-        selected_collision_end_links = link_pose_matrix[len(link_pose_matrix) - 4:]
+        selected_collision_end_links = link_pose_matrix[len(link_pose_matrix) - 5:]
         # check collisions for each link in the arm
-        return self._check_collisions(selected_collision_end_links, avoidance_radius)
+        return not self._check_collisions(selected_collision_end_links, avoidance_radius)

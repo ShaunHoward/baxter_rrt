@@ -4,6 +4,7 @@ import numpy as np
 import random
 import rospy
 import sys
+import threading
 
 from sensor_msgs.msg import JointState
 from sensor_msgs.msg import PointCloud
@@ -323,15 +324,8 @@ class Merry:
             self.grow(self.right_rrt, dist_thresh, p_goal)
             return self.right_rrt
 
-    def approach_goals(self):
-        """
-        A multi-threaded process that plans with both left and right arms.
-        Each arm uses a online hybrid RRT-JT/Randomized IK planner that will essentially loop forever,
-        receiving each latest goal and planning for that goal once it finishes the current planner session.
-        The process can be killed with ctrl-c and the ros.on_shutdown callback should be set to stop the robot joints
-        if this happens. The created RRTs may be saved to disk.
-        """
-        while True and not rospy.is_shutdown():
+    def approach_left_goal(self):
+        while not rospy.is_shutdown():
             left_rrt = None
             if self.left_goal is not None:
                 print "left goal: " + str(self.left_goal)
@@ -347,6 +341,8 @@ class Merry:
 
             self.left_arm.set_joint_position_speed(0.0)
 
+    def approach_right_goal(self):
+        while not rospy.is_shutdown():
             right_rrt = None
             if self.right_goal is not None:
                 print "right goal: " + str(self.right_goal)
@@ -359,6 +355,22 @@ class Merry:
                 rospy.loginfo("met right goal")
 
             self.right_arm.set_joint_position_speed(0.0)
+
+    def approach_goals(self):
+        """
+        A multi-threaded process that plans for both left and right arms.
+        Each arm uses a hybrid RRT-JT/Randomized IK planner that will essentially loop forever.
+        It receives the latest goal and plans for that goal once it is received.
+        The process can be killed with ctrl-c and the ros.on_shutdown callback should be set to stop the robot joints
+        if this happens.
+        """
+        t_left = threading.Thread(target=self.approach_left_goal)
+        t_left.start()
+        t_right = threading.Thread(target=self.approach_right_goal)
+        t_right.start()
+        threads = [t_left, t_right]
+        for thread in threads:
+            thread.join()
         return 0
 
     def approach_single_goal(self, side, kin):

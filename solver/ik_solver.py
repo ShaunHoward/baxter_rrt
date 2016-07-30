@@ -60,7 +60,7 @@ class KDLIKSolver:
         return np.linalg.pinv(self.solver.jacobian(q_list))
 
     def joints_in_limits(self, q_list):
-        return self.solver.joints_in_safe_limits(q_list)
+        return self.solver.joints_in_safe_limits(q_list).all()
 
     def clip_joints_to_limits(self, q_list):
         return self.solver.clip_joints_safe(q_list)

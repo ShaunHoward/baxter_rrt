@@ -1,16 +1,15 @@
-import colorsys as cs
-import helpers as h
-import math
 import numpy as np
+
 import rospy
 import std_msgs.msg
 import tf
-
-from geometry_msgs.msg import Point32, Point
-from sensor_msgs.msg import PointCloud
+from geometry_msgs.msg import Point32
 from sensor_msgs import point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud
+
+import helpers as h
+from solver.collision_checker import CollisionChecker
 from solver.ik_solver import KDLIKSolver
-from planner.collision_checker import CollisionChecker
 
 __author__ = "Shaun Howard (smh150@case.edu)"
 
@@ -41,7 +40,7 @@ class KinectTransformer:
         self.left_cc = CollisionChecker([], KDLIKSolver("left"))
         self.right_cc = CollisionChecker([], KDLIKSolver("right"))
 
-    def part_of_arm(self, point, rgb_tuple, side, collision_radius=0.35):
+    def part_of_arm(self, point, rgb_tuple, side, collision_radius=0.175):
         """
         Checks if the given point is a part of the side arm specified.
         Uses the color provided in the rgb tuple to determine if the point is red, using both lower and upper red hues.
@@ -62,13 +61,13 @@ class KinectTransformer:
 
         is_red = False
         if collides_with_arm:
-            actual_color, closest_color = h.get_color_name(rgb_tuple)
-            is_red = "red" in closest_color.lower()
-            if is_red:
-                print "new arm point rgb and hsv values: "
-                print rgb_tuple
+            # actual_color, closest_color = h.get_color_name(rgb_tuple)
+            # is_red = "red" in closest_color.lower()
+            # if is_red:
+            print "new arm point rgb values: "
+            print rgb_tuple
         # the point is considered part of the arm if it is red and collides with the arm
-        return is_red and collides_with_arm
+        return collides_with_arm
 
     def filter_out_arm(self, rgb_points, side):
         """
