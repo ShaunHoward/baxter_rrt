@@ -162,30 +162,56 @@ hundreds of thousands of four-dimensional RGB-D data points.
  
 \subsection{Planner Design}
 
+The planner design in this paper is inspired by all of the best qualities of the planners described in the papers mentioned. Modifications were made to the concept of a Rapidly-
+exploring Random Tree necessary to fuse the several successful Jacobian-based techniques together to provide reliable redundant manipulator planning. This hybrid 
+RRT planner provides the ability to use either the Jacobian-Transpose or Jacobian Pseudo-inverse-based methods for goal-directed path planning. For random path planning, a IK
+straight-line solver is used to sample solutions at random points within growing radii from the goal center until a goal is found or the maximum number of retires is met. 
+The pairing of the hybrid RRT and random IK-based planner methods should allow solutions to be found very quickly if possible, otherwise, the planner should get as close as 
+possible to the goal over time or once a goal distance threshold is met. 
 
-designed in this paper is inspired by all of the best qualities of the planners described in the papers mentioned. The RRT-JT solution's approach to not
-depend on an IK solver provides a starting foundation for this planner. Then, the JPINV option is added to replace the 
-The can avoid this with a multi-threaded approach that utilizes time series data in multiple dimensions.
+The planner framework consists of four different options for planning, using either the JT or JPINV as an error measurement technique. The surrounding planner structure was built
+purposefully for versatility and adherence to a specific planner interface that could be generalized for several arms. Given the Baxter robot has 2 arms, the version of
+the planner for this paper has two arms -- both the left and right arms -- implemented in a multi-threaded fashion to increase planner turnaround time and provide a 
+sense of real-time planning for modern humanoid robot applications. The planner considers all obstacles for each arm at frequently updated time steps and executes new
+nodes once they are verified as collision free and within a certain range from the goal. Several parameters exist in the planner that can be tweaked to make it
+perform better such as the allowed range to the goal. Currently, default settings have been set to ensure optimal performance for experimentation purposes.
+The planner details including pseudo-code to the RRT-JT and RRT-JPINV paired with random IK restarts as well as parameters that can be tuned will be covered in the 
+next section.
+
+\subsection{RRT-JT with Random IK Restarts}
+
+The inspiration for random IK restarts with the RRT-JT planner came from the idea of stochastic processes. The RRT-JT planner can get stuck in local minima or reach joint
+limits like most other Jacobian-based planners. A great addition to undermine the predetermined nature of getting stuck in minima for the planner would be to add random
+restarts somehow. One of the more convenient and reliable ways of doing so would be to add random IK restarts. These random IK restarts would not be sampled from a database,
+but points would be randomly generated in a range increasing over time with execution. The benefit of doing so would be that the planner would always be able to climb out of local
+minima during gradient descent due to the randomness of the RRT random extend step which is uniformly-selected with a probability of 1-p_goal, where p_goal is the probability 
+of the planner extending to the goal with either the JT or JPINV algorithms. As infants experiment with things until they get the answer they
+want about why something happens as in cause and effect, the planner would randomly guess when randomly extending to a node with the random-point IK solver would be a good idea.
+An addition to this would be to have a set of heuristics to determine when to switch planners for planner turnaround minimization. However, currently, a the probability
+p_goal is the deciding factor to switch between the random extension step and the goal extension step of the planner.
+
+The following is pseudo-code for the RRT-JT with random IK restarts:
+
+\subsection{RRT-JPINV with Random IK Restarts}
+
 
 inspiration: realtime rrt, learning by doing
-
-Modifications were made to the concept of a Rapidly-
-exploring Random Tree necessary to fuse several successful Jacobian-based techniques together to provide reliable redundant manipulator planning. This hybrid 
-RRT planner uses the fusion of both the Jacobian-Transpose and Jacobian-Pseudoinverse-based methods for goal-directed path planning. For random path planning, a IK
-straight-line solver is used to sample solutions at random points within growing radii from the goal center until a goal is found or the maximum number of retires is met. 
-The pairing of the hybrid RRT and random IK-based planner methods allow solutions to be found very quickly if possible, otherwise, the planner will get as close as 
-possible over time or a minimum distance threshold is met. This method was found to perform better than the Jacobian-Transpose and IK-based approaches overall, although 
-each method has upsides and downsides. Rarely, if ever, does the planner get noticeably stuck in local minima unless a goal is impossible for the end effector to 
-reach. A Gazebo simulation paired with Rviz is used to examine custom implementations of the algorithms mentioned. A comparison is made between the methods used 
-during experimentation which reveals that the hybrid RRT planner is quicker than the other planning methods while balancing constraints and generating a viable solution to 
-almost any problem within reach of the given end effector in use.
 
 
 \subsection{Planner Implementation} \label{Planner Implementation}
 
 \subsection{Gazebo Simulation} \label{Gazebo Simulation}
+ A Gazebo simulation paired with Rviz is used to examine custom implementations of the algorithms mentioned. 
+ 
+\section{Results} \label{Results}
+A comparison is made between the methods used 
+during experimentation which reveals that the hybrid RRT planner is quicker than the other planning methods while balancing constraints and generating a viable solution to 
+almost any problem within reach of the given end effector in use.
 
 \section{Conclusion} \label{Conclusion} 
+This method was found to perform better than the Jacobian-Transpose and IK-based approaches overall, although 
+each method has upsides and downsides. Rarely, if ever, does the planner get noticeably stuck in local minima unless a goal is impossible for the end effector to 
+reach.
 
 \subsection{Future Work}
 
