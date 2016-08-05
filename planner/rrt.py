@@ -146,10 +146,8 @@ class RRT:
         current_milli_time = lambda: int(round(time.time() * 1000))
         curr_time = current_milli_time()
         prev_time = curr_time
-        while first or (prev_dist_to_goal > dist_thresh and curr_time - prev_time < time_limit):
+        while prev_dist_to_goal > dist_thresh and curr_time - prev_time < time_limit:
             print "looking for jacobian soln..."
-            if first:
-                first = False
             x_old = self.fwd_kin(q_old)
             d_x = self.workspace_delta(x_old)
             if use_adv_gradient_descent:

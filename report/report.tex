@@ -10,6 +10,14 @@
   \DeclareGraphicsExtensions{.jpeg,.png} \else
 \fi
 
+\usepackage{amsmath}
+\usepackage[linesnumbered,ruled]{algorithm2e}
+\usepackage{comment}
+\usepackage[noend]{algpseudocode}
+
+\newcommand{\sfunction}[1]{\textsf{\textsc{#1}}}
+\algrenewcommand\algorithmicforall{\textbf{foreach}}
+\algrenewcommand\algorithmicindent{.8em}
 
 \begin{document}
 
@@ -30,7 +38,7 @@
 % in the abstract
 \begin{abstract}
 Within this paper a flexible solution to the path planning problem for dual-arm robots is presented. Several methods are implemented for path planning with the 
-Jacobian transpose and pseudo-inverse, using various forms of gradient descent. The construction of an Randomly RRT is presented which plans with the Jacobian 
+Jacobian transpose and pseudo-inverse, using various forms of gradient descent. The construction of a Rapidly-Exploring Random Tree (RRT) is presented which plans with the Jacobian 
 pseudo-inverse for goal-directed movement and randomly restarts with a randomly-selected Inverse Kinematics solution point near the goal to avoid getting stuck 
 in local minima. Several variations on the algorithm are tested, including switching between the Jacobian transpose and pseudo-inverse to compare planning 
 accuracy, efficiency, and speed between the two gradient descent methods. The test results for the four algorithm combinations are compared. The results have 
@@ -178,20 +186,118 @@ perform better such as the allowed range to the goal. Currently, default setting
 The planner details including pseudo-code to the RRT-JT and RRT-JPINV paired with random IK restarts as well as parameters that can be tuned will be covered in the 
 next section.
 
-\subsection{RRT-JT with Random IK Restarts}
+\subsection{RRT-JT and RRT-JPINV with Random IK Restarts}
 
 The inspiration for random IK restarts with the RRT-JT planner came from the idea of stochastic processes. The RRT-JT planner can get stuck in local minima or reach joint
 limits like most other Jacobian-based planners. A great addition to undermine the predetermined nature of getting stuck in minima for the planner would be to add random
 restarts somehow. One of the more convenient and reliable ways of doing so would be to add random IK restarts. These random IK restarts would not be sampled from a database,
 but points would be randomly generated in a range increasing over time with execution. The benefit of doing so would be that the planner would always be able to climb out of local
-minima during gradient descent due to the randomness of the RRT random extend step which is uniformly-selected with a probability of 1-p_goal, where p_goal is the probability 
+minima during gradient descent due to the randomness of the RRT random extend step which is uniformly-selected with a probability of 1-p\_goal, where p\_goal is the probability 
 of the planner extending to the goal with either the JT or JPINV algorithms. As infants experiment with things until they get the answer they
 want about why something happens as in cause and effect, the planner would randomly guess when randomly extending to a node with the random-point IK solver would be a good idea.
 An addition to this would be to have a set of heuristics to determine when to switch planners for planner turnaround minimization. However, currently, a the probability
-p_goal is the deciding factor to switch between the random extension step and the goal extension step of the planner.
+p\_goal is the deciding factor to switch between the random extension step and the goal extension step of the planner. The JPINV method is also a part of the planner which
+can be toggled to replace the JT. All the Jacobian-related options are condensed into one algorithm with boolean flags in the planner.
 
-The following is pseudo-code for the RRT-JT with random IK restarts:
+The following is pseudo-code for the extend\_toward\_goal method which uses either the JT or JPINV for goal-directed planning.
 
+\begin{algorithm}
+    \SetKwInOut{Input}{Input}
+    \SetKwInOut{Output}{Output}
+
+    \underline{function Euclid} $(dist\_thresh, time\_limit)$\;
+    \Input{$dist\_thresh$ in meters, $time\_limit$ in seconds}
+
+     \State $\mathit{q\_old} \gets closest\_node\_to\_goal$
+     \State $first\gets\true$
+     \begin{comment}
+     Q\_new = []
+     prev\_dist\_to\_goal = self.dist\_to\_goal()
+     current\_milli\_time = get\_curr\_time\_in\_ms()
+     curr\_time = current\_milli\_time()
+     prev\_time = curr\_time
+     \While {prev\_dist\_to\_goal > dist\_thresh and curr\_time - prev\_time < time\_limit}
+         x\_old = self.fwd\_kin(q\_old)
+         dx = self.workspace\_delta(x\_old)
+         if use\_adv\_gradient\_descent:
+             J = self.kin.jacobian(q\_old)
+             if use\_pinv:
+                 JT = np.linalg.pinv(J)
+             else:
+                 JT = J.T
+             direction = np.dot(JT, np.dot(J, JT)**-1)
+         else:
+             if use\_pinv:
+                 JT = self.kin.jacobian\_pinv(q\_old)
+             else:
+                 JT = self.kin.jacobian\_transpose(q\_old)
+             direction = JT
+         dq = np.dot(direction, dx)
+         q\_new = q\_old + dq
+         curr\_dist\_to\_goal = self.\_dist\_to\_goal(self.fwd\_kin(q\_new))
+         if curr\_dist\_to\_goal < prev\_dist\_to\_goal and math.fabs(curr\_dist\_to\_goal-prev\_dist\_to\_goal) < max\_dist\_cap\
+                 and self.collision\_checker.collision\_free(q\_new):
+             self.exec\_angles(q\_new)
+             Q\_new.append(q\_new)
+             q\_old = q\_new
+             prev\_dist\_to\_goal = curr\_dist\_to\_goal
+         else:
+             break
+	\end{comment}
+    \caption{Euclid's algorithm for finding the greatest common divisor of two nonnegative integers}
+\end{algorithm}
+
+       
+
+The random IK restart step pseudo-code for the method ik\_extend\_randomly is as follows:
+\begin{comment}
+        Q_new = []
+        prev_dist_to_goal = self.dist_to_goal()
+        num_tries_left = num_tries
+        first = True
+        # start with soln at offset and work away from goal
+        curr_diameter = offset
+        while prev_dist_to_goal > dist_thresh and num_tries_left > 0:
+            goal_pose = self.get_goal_pose()
+            if first:
+                first = False
+                # first, try the goal point
+                next_point = self.goal_point()
+            else:
+                goal_arr = self.goal_node()
+                next_point = []
+                for i in range(3):
+                    curr_coord = curr_pos[i]
+                    goal_coord = goal_arr[i]
+                    radius = curr_diameter/2.0
+                    if curr_coord < goal_coord:
+                        next_point.append(h.generate_random_decimal(curr_coord-radius, goal_coord+radius))
+                    else:
+                        next_point.append(h.generate_random_decimal(goal_coord-radius, curr_coord+radius))
+            print "looking for ik soln..."
+            if self.collision_checker.check_collision(next_point, avoidance_radius):
+                next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
+                solved, q_new = ik_soln_exists(next_pose, self.kin)
+                if solved:
+                    curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
+                    curr_pos = next_point
+                    # only add the point as a soln if the distance from this point to goal is less than that from the
+                    # last end effector point
+                    if curr_dist_to_goal < prev_dist_to_goal and self.collision_checker.collision_free(q_new):
+                        print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
+                        self.exec_angles(q_new)
+                        Q_new.append(q_new)
+                        prev_dist_to_goal = curr_dist_to_goal
+                        continue
+                    else:
+                        print "ik: soln not collision free..."
+                else:
+                    print "could not find ik soln for generated point"
+            # increment current range for generating random points by adding another offset amount
+            curr_diameter += offset
+            num_tries_left -= 1
+        self.add_nodes(Q_new)
+\end{comment}
 \subsection{RRT-JPINV with Random IK Restarts}
 
 
