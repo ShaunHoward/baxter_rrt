@@ -288,7 +288,8 @@ class Merry:
         :return: the finalized rrt with all nodes after they have been executed
         """
         if rrt is not None:
-            while rrt.dist_to_goal() > dist_thresh:
+            curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
+            while curr_dist_to_goal > dist_thresh:
                 rospy.loginfo("growing rrt...")
                 p = random.uniform(0, 1)
                 if p < p_goal:
@@ -298,6 +299,9 @@ class Merry:
                     rospy.loginfo("using ik random extend")
                     pos = self.left_arm.endpoint_pose()["position"]
                     rrt.ik_extend_randomly(np.array(pos), dist_thresh)
+                curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
+                print "current distance to goal (m): " + str(curr_dist_to_goal)
+            rrt.cleanup_nodes()
         return rrt
 
     def grow_rrt(self, side, q_start, goal_pose, dist_thresh=0.04, p_goal=0.5):
@@ -332,11 +336,11 @@ class Merry:
                 left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
                 left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal)
             if left_rrt:
-                # for node in left_rrt.nodes:
-                #     print "approaching new node..."
-                #     node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
-                #     self.check_and_execute_goal_angles(node_angle_dict, "left")
-                #     print "reached new node destination..."
+                for node in left_rrt.nodes:
+                    print "approaching new node..."
+                    node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
+                    self.check_and_execute_goal_angles(node_angle_dict, "left")
+                    print "reached new node destination..."
                 rospy.loginfo("met left goal")
 
             self.left_arm.set_joint_position_speed(0.0)
