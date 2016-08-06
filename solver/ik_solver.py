@@ -37,9 +37,18 @@ class KDLIKSolver:
         self.min_joins = get_min_joints()
         self.max_joints = get_max_joints()
 
-    def solve(self, position, orientation):
-        return self.solver.inverse((position.x, position.y, position.z),
-                                   (orientation.x, orientation.y, orientation.z, orientation.w))
+    def solve(self, pose, use_rr):
+        x_positions = h.pose_to_7x1_vector(pose)
+        position = x_positions[:3]
+        orientation = x_positions[3:]
+        if not use_rr:
+            return self.solver.inverse(position, orientation)
+        else:
+            return self.solver.inverse_search(position, orientation, timeout=2.)
+            # return self.solver.inverse_biased_search(pose, goal_q_bias, goal_weights)
+
+    def solve_biased_random_restarts(self, position, orientation):
+        return self.solver.inverse_biased_search(position, orientation)
 
     def solve_fwd_kin(self, q_list):
         return self.solver.forward(q_list)

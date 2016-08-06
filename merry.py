@@ -69,6 +69,10 @@ class Merry:
         self.marker_subscriber = rospy.Subscriber("/merry_end_point_markers/feedback", InteractiveMarkerFeedback,
                                                   self.interactive_marker_cb, queue_size=5)
 
+        self.left_rrt = None
+
+        self.right_rrt = None
+
         # subscribe to the obstacle list for both right and left arms
         self.left_obs_sub = rospy.Subscriber("left_arm_obstacles", PointCloud, self.left_obs_cb, queue_size=10)
         self.right_obs_sub = rospy.Subscriber("right_arm_obstacles", PointCloud, self.right_obs_cb, queue_size=10)
@@ -98,9 +102,7 @@ class Merry:
 
         self.right_obstacles = []
 
-        self.left_rrt = None
 
-        self.right_rrt = None
 
     def unpack_obstacle_points(self, data, side):
         """
@@ -159,7 +161,8 @@ class Merry:
         if side is "right":
             self.right_arm.set_joint_position_speed(self.right_speed)
             if use_move:
-                self.right_arm.move_to_joint_positions(joint_positions)
+                # wait for 8 seconds until move should be complete
+                self.right_arm.move_to_joint_positions(joint_positions, timeout=8)
             else:
                 self.right_arm.set_joint_positions(joint_positions)
             self.right_arm.set_joint_position_speed(0.0)
@@ -276,7 +279,10 @@ class Merry:
         else:
             return self.right_kinematics
 
-    def grow(self, rrt, dist_thresh, p_goal):
+    def prune_closest_node(self, rrt):
+        return rrt.prune_closest_node()
+
+    def grow(self, rrt, dist_thresh, p_goal, max_retries=3):
         """
         Grows and executes an online hybrid RRT-JT/Randomized IK planner
         for the given rrt instance (left or right arm).
@@ -285,22 +291,36 @@ class Merry:
         :param rrt: the rrt instance to grow
         :param dist_thresh: the minimum distance threshold to reach from goal position for each goal
         :param p_goal: the probability of approach the goal using a randomized IK planner
+        :param max_retries: the number of times to retry when not making progress in hopes of random hill climb/restart
         :return: the finalized rrt with all nodes after they have been executed
         """
         if rrt is not None:
             curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
+            use_ik = False
+            times_retried = 0
+            last_dist_to_goal = 1000
             while curr_dist_to_goal > dist_thresh:
                 rospy.loginfo("growing rrt...")
-                p = random.uniform(0, 1)
-                if p < p_goal:
-                    rospy.loginfo("using jacobian extend")
-                    rrt.extend_toward_goal(dist_thresh)
-                else:
-                    rospy.loginfo("using ik random extend")
-                    pos = self.left_arm.endpoint_pose()["position"]
-                    rrt.ik_extend_randomly(np.array(pos), dist_thresh)
                 curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
-                print "current distance to goal (m): " + str(curr_dist_to_goal)
+                if curr_dist_to_goal < last_dist_to_goal:
+                    print "current distance to goal (m): " + str(curr_dist_to_goal)
+                    p = random.uniform(0, 1)
+                    if p < p_goal:
+                        rospy.loginfo("using jacobian extend")
+                        rrt.extend_toward_goal(dist_thresh)
+                    else:
+                        rospy.loginfo("using ik random extend")
+                        pos = self.left_arm.endpoint_pose()["position"]
+                        rrt.ik_extend_randomly(np.array(pos), dist_thresh)
+                else:
+                    # back-track to last closest node
+                    pruned_closest_node = self.prune_closest_node(rrt)
+                    if pruned_closest_node:
+                        # have possibility of making more progress
+                        continue
+                    else:
+                        # not going to get any closer to goal most likely
+                        break
             rrt.cleanup_nodes()
         return rrt
 
@@ -337,10 +357,10 @@ class Merry:
                 left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal)
             if left_rrt:
                 for node in left_rrt.nodes:
-                    print "approaching new node..."
+                    print "approaching new left node..."
                     node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
                     self.check_and_execute_goal_angles(node_angle_dict, "left")
-                    print "reached new node destination..."
+                    print "reached new left node destination..."
                 rospy.loginfo("met left goal")
 
             self.left_arm.set_joint_position_speed(0.0)
@@ -353,9 +373,11 @@ class Merry:
                 right_joint_angles = [self.right_arm.joint_angle(name) for name in self.right_arm.joint_names()]
                 right_rrt = self.grow_rrt("right", right_joint_angles, self.right_goal)
             if right_rrt:
-                # for node in right_rrt.nodes:
-                #     node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
-                #     self.check_and_execute_goal_angles(node_angle_dict, "right")
+                for node in right_rrt.nodes:
+                    print "approaching new right node..."
+                    node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
+                    self.check_and_execute_goal_angles(node_angle_dict, "right")
+                    print "reached new right node destination..."
                 rospy.loginfo("met right goal")
 
             self.right_arm.set_joint_position_speed(0.0)
