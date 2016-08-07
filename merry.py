@@ -281,15 +281,15 @@ class Merry:
 
     def grow(self, rrt, dist_thresh, p_goal, max_retries=10000):
         """
-        Grows and executes an online hybrid RRT-JT/Randomized IK planner
+        Grows and executes a RRT-JT/Randomized IK planner
         for the given rrt instance (left or right arm).
         Applies the JT goal approach method 1-p_goal * 100 percent of the time,
         while approaching the goal with a randomized IK planner p_goal * 100 percent of the time.
         :param rrt: the rrt instance to grow
         :param dist_thresh: the minimum distance threshold to reach from goal position for each goal
         :param p_goal: the probability of approach the goal using a randomized IK planner
-        :param max_retries: the number of times to retry when not making progress in hopes of random hill climb/restart
-        :return: the finalized rrt with all nodes after they have been executed
+        :param max_retries: the number of times to retry when not making progress in hopes of random restart
+        :return: the pruned rrt node list
         """
         if rrt is not None:
             curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
@@ -319,7 +319,7 @@ class Merry:
                         break
                 times_retried += 1
             rrt.cleanup_nodes()
-        return rrt
+        return rrt.get_pruned_tree()
 
     def grow_rrt(self, side, q_start, goal_pose, dist_thresh=0.05, p_goal=0.5):
         """
@@ -331,19 +331,17 @@ class Merry:
         :param goal_pose: the goal pose to reach for the side arm
         :param dist_thresh: the distance threshold in meters that determines if the goal pose has been meet
         :param p_goal: the probability of using a straight-line randomized IK planner to approach the goal
-        :return: the rrt resulting from the planning session
+        :return: the pruned rrt node list resulting from the planning session
         """
         obs = self.get_obs_for_side(side)
         if side == "left":
             self.left_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.left_arm.joint_names(), obs,
                                 self.check_and_execute_goal_angles)
-            self.grow(self.left_rrt, dist_thresh, p_goal)
-            return self.left_rrt
+            return self.grow(self.left_rrt, dist_thresh, p_goal)
         else:
             self.right_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.right_arm.joint_names(), obs,
                                  self.check_and_execute_goal_angles)
-            self.grow(self.right_rrt, dist_thresh, p_goal)
-            return self.right_rrt
+            return self.grow(self.right_rrt, dist_thresh, p_goal)
 
     def approach_left_goal(self):
         last_goal = None
@@ -356,13 +354,13 @@ class Merry:
             if self.left_goal is not None:
                 # print "left goal: " + str(self.left_goal)
                 left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
-                left_rrt = self.grow_rrt("left", left_joint_angles, self.left_goal)
+                left_nodes = self.grow_rrt("left", left_joint_angles, self.left_goal)
                 last_goal = self.left_goal
-                if len(left_rrt.nodes) > 0:
+                if len(left_nodes) > 0:
                     execute_new_nodes = True
-            if left_rrt and execute_new_nodes:
-                print "left rrt created with %d nodes" % len(left_rrt.nodes)
-                for node in left_rrt.nodes:
+            if left_nodes and execute_new_nodes:
+                print "left rrt created with %d nodes" % len(left_nodes)
+                for node in left_nodes:
                     print "approaching new left node..."
                     node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
                     self.check_and_execute_goal_angles(node_angle_dict, "left")
@@ -383,13 +381,13 @@ class Merry:
             if self.right_goal is not None:
                 # print "right goal: " + str(self.right_goal)
                 right_joint_angles = [self.right_arm.joint_angle(name) for name in self.right_arm.joint_names()]
-                right_rrt = self.grow_rrt("right", right_joint_angles, self.right_goal)
+                right_nodes = self.grow_rrt("right", right_joint_angles, self.right_goal)
                 last_goal = self.right_goal
-                if len(right_rrt.nodes) > 0:
+                if len(right_nodes) > 0:
                     execute_new_nodes = True
-            if right_rrt and execute_new_nodes:
-                print "right rrt created with %d nodes" % len(right_rrt.nodes)
-                for node in right_rrt.nodes:
+            if right_nodes and execute_new_nodes:
+                print "right rrt created with %d nodes" % len(right_nodes)
+                for node in right_nodes:
                     print "approaching new right node..."
                     print node
                     node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
@@ -404,7 +402,7 @@ class Merry:
     def approach_goals(self):
         """
         A multi-threaded process that plans for both left and right arms.
-        Each arm uses a hybrid RRT-JT/Randomized IK planner that will essentially loop forever.
+        Each arm uses a RRT-JT/Randomized IK planner that will essentially loop forever.
         It receives the latest goal and plans for that goal once it is received.
         The process can be killed with ctrl-c and the ros.on_shutdown callback should be set to stop the robot joints
         if this happens.

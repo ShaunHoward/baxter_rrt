@@ -32,6 +32,12 @@ def ik_soln_exists(goal_pose, kin, use_rr=True):
     else:
         return False, None
 
+common_position_bounds = {"x_min":0.25, "x_max":1, "z_min":-.18, "z_max": .7}
+right_position_bounds = common_position_bounds.copy()
+right_position_bounds.update({"y_min": -.85, "y_max": -0.05})
+left_position_bounds = common_position_bounds.copy()
+left_position_bounds.update({"y_min": 0.05, "y_max": .7})
+
 
 class RRT:
     """
@@ -184,11 +190,23 @@ class RRT:
             curr += 1
         return self.exec_angles_method(q_dict, self.side)
 
-    # def check_positions(self, x_positions):
-    #     for x_pos in x_positions:
-    #         if x_min < x_pos[0] < x_max and \
-    #         y_min < x_pos[1] < y_max and \
-    #         z_min < x_pos[2] < z_max:
+    def get_bounds(self, side):
+        if side == "left":
+            return left_position_bounds
+        else:
+            return right_position_bounds
+
+    # def check_positions(self, q, side):
+    #     fwd_all = self.kin.fwd_kin_all(q)
+    #     bounds = self.get_bounds(side)
+    #     got_violation = False
+    #     for x_pos in fwd_all:
+    #         got_violation = not(bounds["x_min"] < x_pos[0] < bounds["x_max"] and
+    #                         bounds["y_min"] < x_pos[1] < bounds["y_max"] and
+    #                         bounds["z_min"] < x_pos[2] < bounds["z_max"])
+    #         if got_violation:
+    #             break
+    #     return got_violation
 
     def clip_joints_to_limits(self, goal_angles):
         all_joints_at_limits = self.kin.all_joints_at_limits(goal_angles)
@@ -225,6 +243,17 @@ class RRT:
             return True
         else:
             return False
+
+    def get_pruned_tree(self):
+        nodes_to_keep = []
+        last_good_dist = 1000
+        for i in range(len(self.nodes)):
+            node = self.nodes[i]
+            curr_dist = self.dist_to_goal(node)
+            if last_good_dist > curr_dist:
+                last_good_dist = curr_dist
+                nodes_to_keep.append(node)
+        return nodes_to_keep
 
     def generate_and_check_node_angles(self, use_adv_gradient_descent, use_pinv, q_old, d_x):
         if use_adv_gradient_descent:
@@ -278,9 +307,8 @@ class RRT:
                                                                                           q_old=q_old,
                                                                                           d_x=d_x)
             already_picked = self.already_picked(q_new)
-            if not all_at_limits and not already_picked and curr_dist_to_goal < prev_dist_to_goal: #0\
-               # and self.collision_checker.collision_free(q_new):
-                # and self.check_positions(new_positions) \
+            if not all_at_limits and not already_picked and curr_dist_to_goal < prev_dist_to_goal:
+                # and self.collision_checker.collision_free(q_new):
                 print "jacobian goal step: curr dist to goal: " + str(curr_dist_to_goal)
                 self.add_new_node(q_new, curr_dist_to_goal)
                 prev_dist_to_goal = curr_dist_to_goal
@@ -326,7 +354,7 @@ class RRT:
                 curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
                 # only add the point as a soln if the distance from this point to goal is less than that from the
                 # last end effector point
-                if curr_dist_to_goal < prev_dist_to_goal:  # \
+                if curr_dist_to_goal < prev_dist_to_goal:  #  and self.check_positions(q_new, self.side):  # \
                         # and self.collision_checker.collision_free(q_new):
                     print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
                     self.add_new_node(q_new, curr_dist_to_goal)
