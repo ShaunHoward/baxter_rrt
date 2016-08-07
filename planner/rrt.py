@@ -8,7 +8,7 @@ from solver.collision_checker import CollisionChecker
 __author__ = "Shaun Howard (smh150@case.edu)"
 
 
-def ik_soln_exists(goal_pose, kin, use_rr=True):
+def ik_soln_exists(goal_pose, kin, use_rr=False):
     """
     Determines if an IK solution exists for the goal_pose using the provided kinematics solver instance, kin.
     This solver automatically checks if a solution is within joint limits. If a solution is found beyond joint limits,
@@ -92,6 +92,7 @@ class RRT:
 
     def add_new_node(self, q_new, curr_dist_to_goal):
         self.cleanup_nodes()
+        print "adding new node!"
         self.nodes.append(q_new)
         self.pos_nodes.append((curr_dist_to_goal, self.fwd_kin(q_new)))
 
@@ -223,6 +224,8 @@ class RRT:
             if curr_dist < min_dist_to_goal:
                 min_dist_to_goal = curr_dist
                 min_node_index = i
+        if min_node_index+1 < len(self.nodes):
+            print "pruning nodes from tree"
         self.nodes = self.nodes[:min_node_index+1]
         self.pos_nodes = self.pos_nodes[:min_node_index+1]
 
@@ -348,17 +351,18 @@ class RRT:
     def add_point_if_valid(self, next_point, avoidance_diameter, goal_pose, prev_dist_to_goal, curr_diameter):
         curr_dist_to_goal = prev_dist_to_goal
         if True:  # self.collision_checker.check_collision(next_point, avoidance_diameter):
-            next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
+            next_pose = h.generate_goal_pose_w_same_orientation(next_point, None)
+            # TODO: do collision checking on randomly-selected configurations
             solved, q_new = ik_soln_exists(next_pose, self.kin, True)
             if solved:
                 curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
                 # only add the point as a soln if the distance from this point to goal is less than that from the
                 # last end effector point
-                if curr_dist_to_goal < prev_dist_to_goal:  #  and self.check_positions(q_new, self.side):  # \
+                # if curr_dist_to_goal < prev_dist_to_goal:  #  and self.check_positions(q_new, self.side):  # \
                         # and self.collision_checker.collision_free(q_new):
-                    print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
-                    self.add_new_node(q_new, curr_dist_to_goal)
-                    return True, curr_dist_to_goal
+                print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
+                self.add_new_node(q_new, curr_dist_to_goal)
+                return True, curr_dist_to_goal
         return False, curr_dist_to_goal
 
     def ik_extend_randomly(self, curr_pos, dist_thresh, avoidance_diameter=0.25, num_tries=5, use_biased_random_restarts=True):
@@ -382,25 +386,26 @@ class RRT:
         first = True
         # start with soln at offset and work away from goal
         curr_diameter = avoidance_diameter
-        while prev_dist_to_goal > dist_thresh and num_tries_left > 0:
-            next_point = self.goal_point()
+        while num_tries_left > 0:
+            # next_point = self.goal_point()
             goal_pose = self.get_goal_pose()
-            # if first:
-            #     first = False
-            #     # first, try the goal point
-            #     next_point = self.goal_point()
-            # else:
-            #     next_point = self.generate_random_goal_point(curr_pos, curr_diameter)
+            if first:
+                first = False
+                # first, try the goal point
+                next_point = self.goal_point()
+            else:
+                next_point = self.generate_random_goal_point(curr_pos, curr_diameter)
             print "looking for ik soln..."
             point_is_valid, curr_dist_to_goal = self.add_point_if_valid(next_point=next_point,
                                                                         avoidance_diameter=avoidance_diameter,
                                                                         goal_pose=goal_pose,
                                                                         prev_dist_to_goal=prev_dist_to_goal,
-                                                                        curr_diameter=curr_diameter)
+                                                                        curr_diameter=avoidance_diameter)
             if point_is_valid:
                 print "ik solution found is valid!!"
-                prev_dist_to_goal = curr_dist_to_goal
-                curr_pos = next_point
+                # prev_dist_to_goal = curr_dist_to_goal
+                # curr_pos = next_point
+                return
             else:
                 # allow more flexibility in distance from goal
                 curr_diameter += avoidance_diameter

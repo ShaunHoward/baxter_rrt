@@ -87,7 +87,7 @@ def wrap_angles_in_dict(angles, keys):
     return q_dict
 
 
-def generate_goal_pose_w_same_orientation(dest_point, endpoint_orientation):
+def generate_goal_pose_w_same_orientation(dest_point, endpoint_orientation=None):
     """
     Creates a Pose from the 3x1 destination point np array and Pose.orientation data object as endpoint_orientation.
     If endpoint_orientation is None, a partially-filled Pose will be returned with only x,y,z populated.

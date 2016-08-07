@@ -42,7 +42,8 @@ class KDLIKSolver:
         position = x_positions[:3]
         orientation = x_positions[3:]
         if not use_rr:
-            return self.solver.inverse(position, orientation)
+            q_guess = x_positions
+            return self.solver.inverse(position, orientation, q_guess)
         else:
             return self.solver.inverse_search(position, orientation, timeout=2.)
             # return self.solver.inverse_biased_search(pose, goal_q_bias, goal_weights)

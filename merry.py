@@ -296,29 +296,29 @@ class Merry:
             times_retried = 0
             last_dist_to_goal = 1000
             while curr_dist_to_goal > dist_thresh and times_retried <= max_retries:
-                rospy.loginfo("growing rrt...")
-                curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
-                if curr_dist_to_goal < last_dist_to_goal:
-                    print "current distance to goal (m): " + str(curr_dist_to_goal)
-                    p = random.uniform(0, 1)
-                    if p < p_goal:
-                        rospy.loginfo("using jacobian extend")
-                        rrt.extend_toward_goal(dist_thresh)
-                    else:
-                        rospy.loginfo("using ik random extend")
-                        pos = self.left_arm.endpoint_pose()["position"]
-                        rrt.ik_extend_randomly(np.array(pos), dist_thresh)
-                else:
-                    # back-track to last closest node
-                    pruned_closest_node = self.prune_closest_node(rrt)
-                    if pruned_closest_node:
-                        # have possibility of making more progress
-                        continue
-                    else:
-                        # not going to get any closer to goal most likely
-                        break
-                times_retried += 1
-            rrt.cleanup_nodes()
+                print "current distance to goal (m): " + str(curr_dist_to_goal)
+                p = random.uniform(0, 1)
+                rospy.loginfo("using ik random extend")
+                pos = self.left_arm.endpoint_pose()["position"]
+                rrt.ik_extend_randomly(np.array(pos), dist_thresh)
+                if p < p_goal:
+                    rospy.loginfo("using jacobian extend")
+                    rrt.extend_toward_goal(dist_thresh)
+
+            #     rospy.loginfo("growing rrt...")
+            #     curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
+            #     if curr_dist_to_goal < last_dist_to_goal:
+            #
+            #         # back-track to last closest node
+            #         pruned_closest_node = self.prune_closest_node(rrt)
+            #         if pruned_closest_node:
+            #             # have possibility of making more progress
+            #             continue
+            #         else:
+            #             # not going to get any closer to goal most likely
+            #             break
+            #     times_retried += 1
+            # rrt.cleanup_nodes()
         return rrt.get_pruned_tree()
 
     def grow_rrt(self, side, q_start, goal_pose, dist_thresh=0.05, p_goal=0.5):
