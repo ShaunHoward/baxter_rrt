@@ -364,6 +364,7 @@ class Merry:
                 print "left rrt created with %d nodes" % len(left_rrt.nodes)
                 for node in left_rrt.nodes:
                     print "approaching new left node..."
+                    print "[" + ", ".join([str(x) for x in node]) + "]"
                     node_angle_dict = h.wrap_angles_in_dict(node, self.left_arm.joint_names())
                     self.check_and_execute_goal_angles(node_angle_dict, "left")
                     print "reached new left node destination..."
@@ -391,7 +392,7 @@ class Merry:
                 print "right rrt created with %d nodes" % len(right_rrt.nodes)
                 for node in right_rrt.nodes:
                     print "approaching new right node..."
-                    print node
+                    print "[" + ", ".join([str(x) for x in node]) + "]"
                     node_angle_dict = h.wrap_angles_in_dict(node, self.right_arm.joint_names())
                     self.check_and_execute_goal_angles(node_angle_dict, "right")
                     print "reached new right node destination..."

@@ -277,7 +277,7 @@ The random IK restart step pseudo-code for the method ik\_extend\_randomly is as
             print "looking for ik soln..."
             if self.collision_checker.check_collision(next_point, avoidance_radius):
                 next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
-                solved, q_new = ik_soln_exists(next_pose, self.kin)
+                solved, q_new = ik_soln_exists(next_pose, self.kin, True, True)
                 if solved:
                     curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
                     curr_pos = next_point

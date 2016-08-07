@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import struct
 
 import rospy
@@ -15,6 +16,7 @@ from std_msgs.msg import Header
 from baxter_kdl.kdl_kinematics import KDLKinematics as kin
 from urdf_parser_py.urdf import URDF
 import helpers as h
+from grasps import LEFT_GRASPS, RIGHT_GRASPS
 from hrl_geom.pose_converter import PoseConv
 
 __author__ = "Shaun Howard (smh150@case.edu)"
@@ -37,15 +39,43 @@ class KDLIKSolver:
         self.min_joins = get_min_joints()
         self.max_joints = get_max_joints()
 
-    def solve(self, pose, use_rr):
+    def get_closest_or_random_grasp(self, goal_position, grasps, p_get_random=0.4):
+        min_dist = 1000
+        min_dist_grasp = None
+        p = random.uniform(0,1)
+        if p <= p_get_random:
+            min_dist_grasp = grasps[random.randint(0, len(grasps)-1)]
+        else:
+            for grasp in grasps:
+                pos_arr = self.solve_fwd_kin(grasp)
+                curr_dist = np.linalg.norm(goal_position-pos_arr[:3])
+                if curr_dist < min_dist:
+                    min_dist = curr_dist
+                    min_dist_grasp = grasp
+        return min_dist_grasp
+
+    def get_random_grasp(self, goal_position):
+        if "left" in self._tip_link:
+            grasps = LEFT_GRASPS
+        else:
+            grasps = RIGHT_GRASPS
+        closest_or_random_grasp = self.get_closest_or_random_grasp(goal_position, grasps)
+        return np.array(closest_or_random_grasp).reshape(7, 1)
+
+    def solve(self, pose, use_rr, use_rr_grasp_bias):
+        # rr grasp bias is used if both rr and bias are True
         x_positions = h.pose_to_7x1_vector(pose)
         position = x_positions[:3]
         orientation = x_positions[3:]
-        if not use_rr:
-            return self.solver.inverse(position, orientation)
+        if use_rr_grasp_bias:
+            goal_weights = np.array([0, 0, 0, 0, 1, 1, 1])  # only care about grasp pose, not about near base rotation
+            goal_q_bias = self.get_random_grasp(position)
+            goal_angles = self.solver.inverse_biased_search(pose, goal_q_bias, goal_weights)
+        elif use_rr:
+            goal_angles = self.solver.inverse_search(position, orientation, timeout=2.)
         else:
-            return self.solver.inverse_search(position, orientation, timeout=2.)
-            # return self.solver.inverse_biased_search(pose, goal_q_bias, goal_weights)
+            goal_angles = self.solver.inverse(position, orientation)
+        return goal_angles
 
     def solve_biased_random_restarts(self, position, orientation):
         return self.solver.inverse_biased_search(position, orientation)
