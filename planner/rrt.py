@@ -84,6 +84,11 @@ class RRT:
         # q
         self.nodes.extend(nodes_to_add)
 
+    def add_new_node(self, q_new, curr_dist_to_goal):
+        self.cleanup_nodes()
+        self.nodes.append(q_new)
+        self.pos_nodes.append((curr_dist_to_goal, self.fwd_kin(q_new)))
+
     def add_pos_nodes(self, nodes):
         # (dist, x_pos)
         self.pos_nodes.extend(nodes)
@@ -106,7 +111,7 @@ class RRT:
         return self.kin.solve_fwd_kin(q_list)
 
     def dist(self, start, stop):
-        return np.linalg.norm(stop - start)
+        return np.linalg.norm(stop[:3] - start[:3])
 
     def _dist_to_goal(self, curr):
         return self.dist(curr, self.goal_node())
@@ -221,6 +226,28 @@ class RRT:
         else:
             return False
 
+    def generate_and_check_node_angles(self, use_adv_gradient_descent, use_pinv, q_old, d_x):
+        if use_adv_gradient_descent:
+            J = self.kin.jacobian(q_old)
+            if use_pinv:
+                J_T = np.linalg.pinv(J)
+            else:
+                J_T = J.T
+            direction = np.dot(J_T, np.dot(J, J_T) ** -1)
+        else:
+            if use_pinv:
+                J_T = self.kin.jacobian_pinv(q_old)
+            else:
+                J_T = self.kin.jacobian_transpose(q_old)
+            direction = J_T
+        d_q = np.dot(direction, d_x).tolist()
+        d_q = np.array(d_q[0])
+        q_new = q_old + d_q  # math.fabs(curr_dist_to_goal-prev_dist_to_goal) < max_dist_cap \
+        # new_positions = self.kin.fwd_kin_all(q_new)
+        q_new, all_at_limits = self.clip_joints_to_limits(q_new)
+        curr_dist_to_goal = self.dist_to_goal(q_new)
+        return curr_dist_to_goal, q_new, all_at_limits
+
     def extend_toward_goal(self, dist_thresh=0.02, max_dist_cap=0.1, use_pinv=True, use_adv_gradient_descent=True, time_limit=10):
         """
         Uses an online hybrid jacobian transpose and p-inverse RRT planning step to approach the goal
@@ -237,9 +264,6 @@ class RRT:
         time_limit *= 1000
         # get the closest node to goal and try to complete the tree
         prev_dist_to_goal, q_old = self.closest_node_to_goal()
-        first = True
-        Q_new = []
-        X_new = []
         # convert seconds to milliseconds
         current_milli_time = lambda: int(round(time.time() * 1000))
         curr_time = current_milli_time()
@@ -249,35 +273,16 @@ class RRT:
             self.current_nodes.append(q_old)
             x_old = self.fwd_kin(q_old)
             d_x = self.workspace_delta(x_old)
-            if use_adv_gradient_descent:
-                J = self.kin.jacobian(q_old)
-                if use_pinv:
-                    J_T = np.linalg.pinv(J)
-                else:
-                    J_T = J.T
-                direction = np.dot(J_T, np.dot(J, J_T)**-1)
-            else:
-                if use_pinv:
-                    J_T = self.kin.jacobian_pinv(q_old)
-                else:
-                    J_T = self.kin.jacobian_transpose(q_old)
-                direction = J_T
-            d_q = np.dot(direction, d_x).tolist()
-            d_q = np.array(d_q[0])
-            q_new = q_old + d_q  # math.fabs(curr_dist_to_goal-prev_dist_to_goal) < max_dist_cap \
-            # new_positions = self.kin.fwd_kin_all(q_new)
-            q_new, all_at_limits = self.clip_joints_to_limits(q_new)
-            curr_dist_to_goal = self.dist_to_goal(q_new)
+            curr_dist_to_goal, q_new, all_at_limits = self.generate_and_check_node_angles(use_adv_gradient_descent=use_adv_gradient_descent,
+                                                                                          use_pinv=use_pinv,
+                                                                                          q_old=q_old,
+                                                                                          d_x=d_x)
             already_picked = self.already_picked(q_new)
-            if not all_at_limits and not already_picked and curr_dist_to_goal < prev_dist_to_goal\
-                and self.collision_checker.collision_free(q_new):
+            if not all_at_limits and not already_picked and curr_dist_to_goal < prev_dist_to_goal: #0\
+               # and self.collision_checker.collision_free(q_new):
                 # and self.check_positions(new_positions) \
-
                 print "jacobian goal step: curr dist to goal: " + str(curr_dist_to_goal)
-                # self.exec_angles(q_new)
-                Q_new.append(q_new)
-                x_node = self.fwd_kin(q_new)
-                X_new.append((curr_dist_to_goal, x_node))
+                self.add_new_node(q_new, curr_dist_to_goal)
                 prev_dist_to_goal = curr_dist_to_goal
                 q_old = q_new
                 self.current_nodes.append(q_new)
@@ -293,11 +298,42 @@ class RRT:
             # update the previous and current time
             prev_time = curr_time
             curr_time = current_milli_time()
-        self.cleanup_nodes()
-        self.add_nodes(Q_new)
-        self.add_pos_nodes(X_new)
 
-    def ik_extend_randomly(self, curr_pos, dist_thresh, avoidance_diameter=0.4, num_tries=5, use_biased_random_restarts=True):
+    def generate_random_goal_point(self, curr_pos, curr_diameter):
+        goal_arr = self.goal_node()
+        next_point = []
+        for i in range(3):
+            curr_coord = curr_pos[i]
+            goal_coord = goal_arr[i]
+            diff = goal_coord - curr_coord
+            if diff == 0:
+                # avoid division by 0 (we know this coord is aligned with goal)
+                next_point.append(curr_coord)
+                continue
+            offset = math.fabs(goal_coord - curr_coord)
+            if curr_coord < goal_coord:
+                next_point.append(h.generate_random_decimal(curr_coord - offset, goal_coord + offset))
+            else:
+                next_point.append(h.generate_random_decimal(goal_coord - offset, curr_coord + offset))
+        return next_point
+
+    def add_point_if_valid(self, next_point, avoidance_diameter, goal_pose, prev_dist_to_goal, curr_diameter):
+        curr_dist_to_goal = prev_dist_to_goal
+        if True:  # self.collision_checker.check_collision(next_point, avoidance_diameter):
+            next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
+            solved, q_new = ik_soln_exists(next_pose, self.kin, True)
+            if solved:
+                curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
+                # only add the point as a soln if the distance from this point to goal is less than that from the
+                # last end effector point
+                if curr_dist_to_goal < prev_dist_to_goal:  # \
+                        # and self.collision_checker.collision_free(q_new):
+                    print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
+                    self.add_new_node(q_new, curr_dist_to_goal)
+                    return True, curr_dist_to_goal
+        return False, curr_dist_to_goal
+
+    def ik_extend_randomly(self, curr_pos, dist_thresh, avoidance_diameter=0.25, num_tries=5, use_biased_random_restarts=True):
         """
         Random straight-line extension using KDL IK planner for the RRT step.
         Starts generating random points close to goal, from the goal out, until it finds a valid solution.
@@ -313,65 +349,33 @@ class RRT:
         # returns the nearest distance to goal from the last node added by this method
         # only add one node via random soln for now
         # first = True
-        Q_new = []
-        X_new = []
         prev_dist_to_goal, q_old = self.closest_node_to_goal(False)
         num_tries_left = num_tries
         first = True
         # start with soln at offset and work away from goal
         curr_diameter = avoidance_diameter
         while prev_dist_to_goal > dist_thresh and num_tries_left > 0:
+            next_point = self.goal_point()
             goal_pose = self.get_goal_pose()
-            if first:
-                first = False
-                # first, try the goal point
-                next_point = self.goal_point()
-            else:
-                goal_arr = self.goal_node()
-                next_point = []
-                for i in range(3):
-                    curr_coord = curr_pos[i]
-                    goal_coord = goal_arr[i]
-                    diff = goal_coord-curr_coord
-                    if diff == 0:
-                        # avoid division by 0 (we know this coord is aligned with goal)
-                        next_point.append(curr_coord)
-                        continue
-                    offset = curr_diameter/math.pow(goal_coord-curr_coord, 2)
-                    if curr_coord < goal_coord:
-                        next_point.append(h.generate_random_decimal(curr_coord-offset, goal_coord+offset))
-                    else:
-                        next_point.append(h.generate_random_decimal(goal_coord-offset, curr_coord+offset))
+            # if first:
+            #     first = False
+            #     # first, try the goal point
+            #     next_point = self.goal_point()
+            # else:
+            #     next_point = self.generate_random_goal_point(curr_pos, curr_diameter)
             print "looking for ik soln..."
-            if True: #self.collision_checker.check_collision(next_point, avoidance_diameter):
-                next_pose = h.generate_goal_pose_w_same_orientation(next_point, goal_pose.orientation)
-                solved, q_new = ik_soln_exists(next_pose, self.kin, True)
-                if solved:
-                    curr_dist_to_goal = self._dist_to_goal(self.fwd_kin(q_new))
-                    # only add the point as a soln if the distance from this point to goal is less than that from the
-                    # last end effector point
-                    if curr_dist_to_goal < prev_dist_to_goal + curr_diameter and curr_dist_to_goal != prev_dist_to_goal\
-                            and self.collision_checker.collision_free(q_new):
-                        print "random ik planner: curr dist to goal: " + str(curr_dist_to_goal)
-                        # self.exec_angles(q_new)
-                        Q_new.append(q_new)
-                        X_new.append((curr_dist_to_goal, self.fwd_kin(q_new)))
-                        prev_dist_to_goal = curr_dist_to_goal
-                        curr_pos = next_point
-                        #diff = avoidance_diameter-prev_dist_to_goal
-                        #curr_diameter -= diff if curr_diameter - diff > 0. else 0.
-                    #    continue
-                    # elif curr_dist_to_goal >= prev_dist_to_goal:
-                    #    print "ik: soln not close enough to goal"
-                    #else:
-                    #    print "ik: soln not collision-free"
+            point_is_valid, curr_dist_to_goal = self.add_point_if_valid(next_point=next_point,
+                                                                        avoidance_diameter=avoidance_diameter,
+                                                                        goal_pose=goal_pose,
+                                                                        prev_dist_to_goal=prev_dist_to_goal,
+                                                                        curr_diameter=curr_diameter)
+            if point_is_valid:
+                print "ik solution found is valid!!"
+                prev_dist_to_goal = curr_dist_to_goal
+                curr_pos = next_point
             else:
                 # allow more flexibility in distance from goal
                 curr_diameter += avoidance_diameter
-                print "could not find ik soln for generated point"
+                print "could not find ik soln for randomly generated point"
                 # planner might not have solution, so decrement # tries left
                 num_tries_left -= 1
-                # increment current range for generating random points by adding another offset amount
-        self.cleanup_nodes()
-        self.add_nodes(Q_new)
-        self.add_pos_nodes(X_new)
