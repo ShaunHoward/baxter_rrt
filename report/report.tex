@@ -21,7 +21,7 @@
 
 \begin{document}
 
-\title{Jacobian Pseudo-inverse RRT Path Planner with Randomized-IK Restarts for Baxter Dual Arm Manipulator}
+\title{Multi-threaded Jacobian Pseudo-inverse RRT Path Planner with Randomized-IK Restarts for Baxter Dual Arm Manipulator}
 
 \author{
  \IEEEauthorblockN{Shaun Howard}
@@ -37,19 +37,33 @@
 % As a general rule, do not put math, special symbols or citations
 % in the abstract
 \begin{abstract}
-Within this paper a flexible solution to the path planning problem for dual-arm robots is presented. Several methods are implemented for path planning with the 
-Jacobian transpose and pseudo-inverse, using various forms of gradient descent. The construction of a Rapidly-Exploring Random Tree (RRT) is presented which plans with the Jacobian 
-pseudo-inverse for goal-directed movement and randomly restarts with a randomly-selected Inverse Kinematics solution point near the goal to avoid getting stuck 
-in local minima. Several variations on the algorithm are tested, including switching between the Jacobian transpose and pseudo-inverse to compare planning 
-accuracy, efficiency, and speed between the two gradient descent methods. The test results for the four algorithm combinations are compared. The results have 
-yielded the focus of the paper to be on the pseudo-inverse gradient descent method for motion planning with random IK restarts for the Baxter dual arm 
-manipulator.
+Within this paper, we present a flexible, multi-threaded solution to the motion planning problem for dual-armed robots with 7 degrees of freedom (DOF). The task of motion 
+planning for robots with high DOF is computationally intensive due to the number of possible joint angle solutions in configuration and workspace along with avoiding nearby 
+obstacles in motion plans. Building an RRT was time consuming for computer hardware of the past, but modern hardware allows for multiple processes to be run and communicate 
+asynchronously with each other while executing computationally hard tasks. The algorithm presented in this paper is a sampling-based path planning algorithm that builds on the 
+Jacobian Pseudo-inverse-Based Rapidly-exploring Random Tree (RRT) algorithm. The goal extension step for building the tree utilizes the popular Jacobian Pseudo-inverse (JPINV)
+with various goal-based constraints on accepted solutions. However, unlike other planners, the random extension step in this planner utilizes random Inverse Kinematics 
+restarts to plan for solutions based on random guesses to the IK solver for a given goal pose. This paper outlines the better properties of both JPINV and IK methods, while 
+attempting to cut the costs of downsides for both planner methods by applying multi-threaded programming. The solution performs quickly and parallelizes the tasks that took
+previous planners much more time. Our algorithm is compared to results of the JT, JPINV and random IK algorithms approaches to the RRT path planning technique.
 \end{abstract}
 
 \section{Introduction} \label{Introduction}
 
 The search for accurate and quick planning algorithms has grown in recent years with major breakthroughs in memory architecture, processing unit speed and 
-parallel processing. Several planning methods exist that were slow and infeasible to do in real-time in the past. These algorithms can now be resurrected and 
+parallel processing. Several planning methods exist that intricately check environment surroundings, configuration space and workspace constraints, and validate
+that solutions can be executed by the robot due to joint limits and constraints. These planners may or may not be able to cope with dynamic environment updates
+without starting over entirely. The generation of solutions that are valid within a small window of time before the surrounding environment obstacles update
+is a valuable trait of a modern motion planner.
+
+Sampling-based algorithms were developed to randomly-generate solutions that meet the constraints of task being executed for some probability of motion planning time, while 
+approaching the goal for the remaining period of time. A primary sampling-based approach to motion planning is the Rapidly-exploring Random Tree (RRT). In the RRT algorithm,
+an initial joint configuration is provided as the start node. The planner grows randomly from the start node while sampling from the search space to grow the tree toward
+unexplored regions. Given that this planner can be biased to plan toward a goal configuration and handles high-dimensional search space well, it is suitable for motion
+planning with high DOF kinematics chains.
+
+
+random grasps that were slow and infeasible to do in real-time in the past. These algorithms can now be resurrected and 
 reused successfully on modern hardware. The planner described in this paper is a versatile planner that has several options for planning. The first option is to 
 use only the Jacobian Transpose for planning. The algorithm for the RRT-JT from <paper1> influenced the JT planner implemented in this paper.  While this 
 method's computational time is small and plans are accurate, it's planning capabilities are somewhat limited. The Jacobian Pseudo-inverse (JPI) adds yet more 
