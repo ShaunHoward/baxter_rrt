@@ -104,6 +104,10 @@ def generate_random_3d_point_at_length_away(center_pt, dist):
     return np.array((x_rand, y_rand, z_rand))
 
 
+def unwrap_angles_dict_to_list(angles_dict, keys):
+    return [angles_dict[key] for key in keys] if angles_dict is not None else None
+
+
 def wrap_angles_in_dict(angles, keys):
     """
     Creates a dictionary from the provided ordered angles list corresponding to the provided keys name list.
@@ -202,14 +206,11 @@ def pose_vector_to_pose_msg(pose_vector):
     :return: the pose, either 3-d or 7-d depending on if q_list is length 3 or length 7
     """
     pose = Pose()
-    if len(pose_vector) >= 2:
-        return get_pose(pose_vector[0], pose_vector[1], pose_vector[2])
     if len(pose_vector) == 7:
-        pose.orientation.x = pose_vector[3]
-        pose.orientation.x = pose_vector[4]
-        pose.orientation.x = pose_vector[5]
-        pose.orientation.x = pose_vector[6]
-        return get_pose(pose_vector[0], pose_vector[1], pose_vector[2], pose_vector[3], pose_vector[4], pose_vector[5], pose_vector[6])
+        return get_pose(pose_vector[0], pose_vector[1], pose_vector[2], pose_vector[3], pose_vector[4], pose_vector[5],
+                        pose_vector[6])
+    elif len(pose_vector) >= 2:
+        return get_pose(pose_vector[0], pose_vector[1], pose_vector[2])
     return pose
 
 

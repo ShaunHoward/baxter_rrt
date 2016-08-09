@@ -88,7 +88,7 @@ class RethinkIKSolver:
         self.l_iksvc = rospy.ServiceProxy(self.l_ns, SolvePositionIK)
 
     def solve(self, limb, pose):
-        # pose = h.list_to_pose(pose_arr)
+        # pose = h.pose_vector_to_pose_msg(pose_arr)
         ikreq = SolvePositionIKRequest()
         hdr = Header(stamp=rospy.Time.now(), frame_id='base')
         pose = PoseStamped(header=hdr, pose=pose)

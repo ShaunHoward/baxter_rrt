@@ -4,11 +4,12 @@ import time
 
 import helpers as h
 from solver.collision_checker import CollisionChecker
+from solver.ik_solver import RethinkIKSolver
 
 __author__ = "Shaun Howard (smh150@case.edu)"
 
 
-def ik_soln_exists(goal_pose, kin, use_rr=True):
+def ik_soln_exists(goal_pose, kin, use_rr=False):
     """
     Determines if an IK solution exists for the goal_pose using the provided kinematics solver instance, kin.
     This solver automatically checks if a solution is within joint limits. If a solution is found beyond joint limits,
@@ -23,10 +24,11 @@ def ik_soln_exists(goal_pose, kin, use_rr=True):
     if goal_pose is not None:
         goal_angles = None
         if goal_pose:
-            goal_angles = kin.solve(pose=goal_pose, use_rr=use_rr)
-            if not kin.joints_in_limits(goal_angles):
+            goal_angles = kin.solve("left", goal_pose)
+            #goal_angles = kin.solve(pose=goal_pose, use_rr=use_rr)
+            #if not kin.joints_in_limits(goal_angles):
                 # if goals not within limits, clip and reset them to the limits
-                goal_angles = kin.clip_joints_to_limits(goal_angles)
+            #    goal_angles = kin.clip_joints_to_limits(goal_angles)
     if goal_angles is not None:
         return True, goal_angles
     else:
@@ -54,7 +56,8 @@ class RRT:
     l_min = []
     l_max = []
 
-    def __init__(self, q_start, goal_pose, kin_solver, side, joint_names, step_size, obstacles, obs_dist_thresh):
+    def __init__(self, q_start, goal_pose, kin_solver, side, joint_names, step_size, obstacles, obs_dist_thresh,
+                 dist_thresh=0.1):
         """
         Constructor for RRT. Accepts a numpy array of starting angles, the goal pose, the kinematics solver instance
         for the RRT side arm, an ordered list of joint_names from base to end effector, a list of obstacle points that
@@ -68,8 +71,11 @@ class RRT:
         :param step_size: the cartesian step size to grow the tree at intervals of
         :param obstacles: the list of obstacles not including the arm being planned for
         :param obs_dist_thresh: the distance threshold to avoid obstacles around the arm joint end points
+        :param dist_thresh: the distance from th previous configuration that the jacobian planner is allowed before
+         stopping
         """
         self.kin = kin_solver
+        self.rethink_ik = RethinkIKSolver()
         self.q_start = q_start
         # define goals
         self.x_goal = None
@@ -86,12 +92,14 @@ class RRT:
         self.obs_dist_thresh = obs_dist_thresh
         self.joint_names = joint_names
         self.step_size = step_size
+        self.dist_thresh = dist_thresh
 
     def add_new_node(self, q_new):
         # self.cleanup_nodes()
         self.nodes.append(q_new)
         x_new = self.fwd_kin(q_new)[:3]
         dist_to_goal = self.workspace_delta_norm(self.goal_point() - x_new)
+        print "new distance to goal: %f" % dist_to_goal
         self.pos_nodes.append((dist_to_goal, x_new))
         self.already_picked_nodes.append(q_new)
 
@@ -165,11 +173,11 @@ class RRT:
         limited_x_diff = self.step_size * u
 
         # get the true orientation difference between current and goal euler angles
-        euler_angle_diff = goal_euler_angles - curr_euler_angles
-        euler_u = euler_angle_diff / np.linalg.norm(euler_angle_diff)
-        limited_euler_diff = self.step_size * euler_u
+        euler_diff = goal_euler_angles - curr_euler_angles
+        # euler_u = euler_angle_diff / np.linalg.norm(euler_angle_diff)
+        # limited_euler_diff = self.step_size * euler_u
         # orientation_diff = goal_orientation[:3] - curr_orientation[:3]
-        limited_workspace_step = np.concatenate((limited_x_diff, limited_euler_diff))
+        limited_workspace_step = np.concatenate((limited_x_diff, euler_diff))
         return limited_workspace_step
 
     def extend_toward_goal(self):
@@ -178,12 +186,12 @@ class RRT:
         angles to extend the tree toward the goal limited per step by the cartesian step_size of the rrt instance.
         """
         # get the closest node to goal and try to complete the tree
-        prev_dist_to_goal, q_old = self.closest_node_to_goal()
+        prev_dist, q_old = self.closest_node_to_goal()
         print "looking for goal-directed jacobian soln..."
         while True:
             x_old = self.fwd_kin(q_old)
             nd_x = self.workspace_delta_norm(x_old)
-            if nd_x < self.step_size:
+            if nd_x > self.dist_thresh:
                 # solution reached at this point
                 break
             else:
@@ -194,13 +202,15 @@ class RRT:
                 d_q = np.array(d_q[0])
                 q_new = q_old + d_q
                 q_new, all_at_limits = self.clip_joints_to_limits(q_new)
-                if self.already_picked(q_new) or all_at_limits:
-                    print "jac: soln already picked or joints at all limits..."
+                curr_dist = self.dist_to_goal(q_new)
+                if self.already_picked(q_new) or all_at_limits or curr_dist >= prev_dist + self.dist_thresh:
+                    print "jac: soln already picked or joints at all limits or distance grew too far from goal..."
                     break
                 else:
                     print "found new jacobian node!"
                     self.add_new_node(q_new)
                     q_old = q_new
+                    prev_dist = curr_dist
 
     def generate_random_point_at_step(self, x_old):
         return h.generate_random_3d_point_at_length_away(x_old[:3], self.step_size)
@@ -211,7 +221,7 @@ class RRT:
             curr_orientation = x_near[3:]
             new_pos_arr = np.concatenate((next_point, curr_orientation), 0)
             next_pose = h.pose_vector_to_pose_msg(new_pos_arr)
-            solved, q_new = ik_soln_exists(next_pose, self.kin, False)
+            solved, q_new = ik_soln_exists(next_pose, self.rethink_ik, False)
             if solved:
                 return q_new
         return None
@@ -231,7 +241,8 @@ class RRT:
         print "looking for random ik soln..."
         while num_tries_left > 0:
             next_point = self.generate_random_point_at_step(x_old)
-            q_soln = self.generate_and_check_ik_soln(next_point, x_old)
+            q_soln_dict = self.generate_and_check_ik_soln(next_point, x_old)
+            q_soln = h.unwrap_angles_dict_to_list(q_soln_dict, self.joint_names)
             if q_soln is not None:
                 self.add_new_node(q_soln)
                 print "found new random ik node!!"
