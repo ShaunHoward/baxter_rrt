@@ -5,6 +5,7 @@ import random
 import rospy
 import sys
 import threading
+import time
 
 from sensor_msgs.msg import JointState
 from sensor_msgs.msg import PointCloud
@@ -276,52 +277,32 @@ class Merry:
         else:
             return self.right_kinematics
 
-    def prune_closest_node(self, rrt):
-        return rrt.prune_closest_node()
-
-    def grow(self, rrt, dist_thresh, p_goal, max_retries=10000):
+    def grow(self, rrt, p_goal, num_secs=1000):
         """
         Grows and executes a RRT-JT/Randomized IK planner
         for the given rrt instance (left or right arm).
-        Applies the JT goal approach method 1-p_goal * 100 percent of the time,
-        while approaching the goal with a randomized IK planner p_goal * 100 percent of the time.
+        Applies the JPINV extend to goal method p_goal * 100 percent of the time,
+        while approaching the goal with a random step IK planner (1-p_goal) * 100 percent of the time.
         :param rrt: the rrt instance to grow
-        :param dist_thresh: the minimum distance threshold to reach from goal position for each goal
-        :param p_goal: the probability of approach the goal using a randomized IK planner
-        :param max_retries: the number of times to retry when not making progress in hopes of random restart
+        :param p_goal: the probability of extending to the goal with the jacobian pinv method
+        :param num_secs: the number of seconds to run the RRT construction loop
         :return: the pruned rrt node list
         """
         if rrt is not None:
-            curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
-            times_retried = 0
-            last_dist_to_goal = 1000
-            while curr_dist_to_goal > dist_thresh and times_retried <= max_retries:
-                rospy.loginfo("growing rrt...")
-                curr_dist_to_goal = rrt.closest_node_to_goal(check_if_picked=False)[0]
-                if curr_dist_to_goal < last_dist_to_goal:
-                    print "current distance to goal (m): " + str(curr_dist_to_goal)
-                    p = random.uniform(0, 1)
-                    if p < p_goal:
-                        rospy.loginfo("using jacobian extend")
-                        rrt.extend_toward_goal(dist_thresh)
-                    else:
-                        rospy.loginfo("using ik random extend")
-                        pos = self.left_arm.endpoint_pose()["position"]
-                        rrt.ik_extend_randomly(np.array(pos), dist_thresh)
-                else:
-                    # back-track to last closest node
-                    pruned_closest_node = self.prune_closest_node(rrt)
-                    if pruned_closest_node:
-                        # have possibility of making more progress
-                        continue
-                    else:
-                        # not going to get any closer to goal most likely
-                        break
-                times_retried += 1
-            rrt.cleanup_nodes()
+            rospy.loginfo("growing rrt...")
+            curr_time = time.time()
+            stop_time = curr_time + num_secs
+            while curr_time < stop_time:
+                rospy.loginfo("using ik random extend")
+                rrt.ik_extend_randomly()
+                p = random.uniform(0, 1)
+                if p < p_goal:
+                    rospy.loginfo("using jacobian extend")
+                    rrt.extend_toward_goal()
+                curr_time = time.time()
         return rrt.get_pruned_tree()
 
-    def grow_rrt(self, side, q_start, goal_pose, dist_thresh=0.05, p_goal=0.5):
+    def grow_rrt(self, side, q_start, goal_pose, obs_dist_thresh=0.4, step_size=0.05, p_goal=0.5):
         """
         Grows the rrt for the specified side of the robot. It starts planning from the q_start 7x1 joint angle vector
         and plans to the given goal pose. The distance threshold for accuracy to reach goal state and the probability
@@ -329,30 +310,29 @@ class Merry:
         :param side: the left or right arm side to plan for
         :param q_start: the 7x1 start goal angles vector in order from base to end effector
         :param goal_pose: the goal pose to reach for the side arm
-        :param dist_thresh: the distance threshold in meters that determines if the goal pose has been meet
+        :param obs_dist_thresh: the distance from which to avoid obstacles from arm joint end points
+        :param step_size: the cartesian step size limit to grow the tree with during each extension
         :param p_goal: the probability of using a straight-line randomized IK planner to approach the goal
         :return: the pruned rrt node list resulting from the planning session
         """
         obs = self.get_obs_for_side(side)
         if side == "left":
-            self.left_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.left_arm.joint_names(), obs,
-                                self.check_and_execute_goal_angles)
-            return self.grow(self.left_rrt, dist_thresh, p_goal)
+            self.left_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.left_arm.joint_names(), step_size,
+                                obs, obs_dist_thresh)
+            return self.grow(self.left_rrt, p_goal)
         else:
-            self.right_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.right_arm.joint_names(), obs,
-                                 self.check_and_execute_goal_angles)
-            return self.grow(self.right_rrt, dist_thresh, p_goal)
+            self.right_rrt = RRT(q_start, goal_pose, self.get_kin(side), side, self.right_arm.joint_names(), step_size,
+                                 obs, obs_dist_thresh)
+            return self.grow(self.right_rrt, p_goal)
 
     def approach_left_goal(self):
         last_goal = None
         execute_new_nodes = False
         while not rospy.is_shutdown():
-            left_rrt = None
             if np.array_equal(last_goal, self.left_goal):
                 # continue if goal already met
                 continue
             if self.left_goal is not None:
-                # print "left goal: " + str(self.left_goal)
                 left_joint_angles = [self.left_arm.joint_angle(name) for name in self.left_arm.joint_names()]
                 left_nodes = self.grow_rrt("left", left_joint_angles, self.left_goal)
                 last_goal = self.left_goal
@@ -366,8 +346,7 @@ class Merry:
                     self.check_and_execute_goal_angles(node_angle_dict, "left")
                     print "reached new left node destination..."
                 execute_new_nodes = False
-                print "reached left goal"
-                # rospy.loginfo("met left goal")
+                rospy.loginfo("met left goal")
 
             self.left_arm.set_joint_position_speed(0.0)
 
@@ -375,11 +354,9 @@ class Merry:
         last_goal = None
         execute_new_nodes = False
         while not rospy.is_shutdown():
-            right_rrt = None
             if np.array_equal(last_goal, self.right_goal):
                 continue
             if self.right_goal is not None:
-                # print "right goal: " + str(self.right_goal)
                 right_joint_angles = [self.right_arm.joint_angle(name) for name in self.right_arm.joint_names()]
                 right_nodes = self.grow_rrt("right", right_joint_angles, self.right_goal)
                 last_goal = self.right_goal
@@ -394,8 +371,7 @@ class Merry:
                     self.check_and_execute_goal_angles(node_angle_dict, "right")
                     print "reached new right node destination..."
                 execute_new_nodes = False
-                print "reached right goal"
-                # rospy.loginfo("met right goal")
+                rospy.loginfo("met right goal")
 
             self.right_arm.set_joint_position_speed(0.0)
 
@@ -429,12 +405,8 @@ class Merry:
         goal_met = False
         while goal_met is False and status == 0:
             goal = self.get_goal_pose(side)
-            # obstacles = None
-            # obstacles = h.get_critical_points_of_obstacles(self)
-            # rospy.sleep(1)
             goal_angles = None
             if goal:
-                # curr_angles = [self.left_arm.joint_angle(n) for n in self.left_arm.joint_names()]
                 goal_angles = kin.solve(position=goal.position, orientation=goal.orientation)
                 if goal_angles is not None:
                     goal_met = True

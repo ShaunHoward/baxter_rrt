@@ -18,6 +18,8 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import scale
 
+from tf.transformations import euler_from_quaternion
+
 __author__ = 'Shaun Howard (smh150@case.edu)'
 
 
@@ -61,6 +63,16 @@ def pose_to_7x1_vector(pose):
                      pose.orientation.y, pose.orientation.z, pose.orientation.w))
 
 
+def get_euler_angles_for_orientation(goal_orientation):
+    """
+    Converts a given orientation np array into an np array of the equivalent euler angles
+    in order yaw, pitch, roll
+    :param goal_orientation: the orientation np.array
+    :return: the np.array yaw, pitch roll euler angles
+    """
+    return np.array(euler_from_quaternion(goal_orientation))
+
+
 def generate_random_decimal(start=0.00001, stop=0.5, decimal_places=5):
     """
     Generates a uniformly random decimal value between start and stop inclusive with the provided
@@ -71,6 +83,25 @@ def generate_random_decimal(start=0.00001, stop=0.5, decimal_places=5):
     :return: the rounded randomly generated number in between start and stop
     """
     return round(random.uniform(start, stop), decimal_places)
+
+
+def generate_random_3d_point_at_length_away(center_pt, dist):
+    """
+    Generates a random 3d point using the generalized solution of picking a random point uniformly distributed
+    on the unit sphere. The given distance is in meters.
+    :param center_pt: point to generate random point the given dist from
+    :param dist: the distance in meters to generate a random point from the given point
+    :return: a random point generated along the generalized sphere at the dist away from the given point
+    """
+    z = random.uniform(-1, 1)
+    theta = random.uniform(0, 2*math.pi)
+    r = math.sqrt(1-(z*z))
+    x = r * math.cos(theta)
+    y = r * math.sin(theta)
+    x_rand = center_pt[0] + dist * x
+    y_rand = center_pt[1] + dist * y
+    z_rand = center_pt[2] + dist * z
+    return np.array((x_rand, y_rand, z_rand))
 
 
 def wrap_angles_in_dict(angles, keys):

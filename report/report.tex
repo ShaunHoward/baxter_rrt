@@ -45,7 +45,7 @@ Jacobian Pseudo-inverse-Based Rapidly-exploring Random Tree (RRT) algorithm. The
 with various goal-based constraints on accepted solutions. However, unlike other planners, the random extension step in this planner utilizes random Inverse Kinematics 
 restarts to plan for solutions based on random guesses to the IK solver for a given goal pose. This paper outlines the better properties of both JPINV and IK methods, while 
 attempting to cut the costs of downsides for both planner methods by applying multi-threaded programming. The solution performs quickly and parallelizes the tasks that took
-previous planners much more time. Our algorithm is compared to results of the JT, JPINV and random IK algorithms approaches to the RRT path planning technique.
+previous planners much more time. Our algorithm is compared to results of the JT, JPINV and random IK approaches to the RRT path planning technique.
 \end{abstract}
 
 \section{Introduction} \label{Introduction}
@@ -57,34 +57,24 @@ without starting over entirely. The generation of solutions that are valid withi
 is a valuable trait of a modern motion planner.
 
 Sampling-based algorithms were developed to randomly-generate solutions that meet the constraints of task being executed for some probability of motion planning time, while 
-approaching the goal for the remaining period of time. A primary sampling-based approach to motion planning is the Rapidly-exploring Random Tree (RRT). In the RRT algorithm,
-an initial joint configuration is provided as the start node. The planner grows randomly from the start node while sampling from the search space to grow the tree toward
-unexplored regions. Given that this planner can be biased to plan toward a goal configuration and handles high-dimensional search space well, it is suitable for motion
-planning with high DOF kinematics chains.
+approaching the goal for the remaining period of time. A primary sampling-based approach to motion planning is the Rapidly-exploring Random Tree (RRT). Several motion planning
+implementations utilize the RRT as proposed in \cite{rand_kin_planning}, \cite{anytime_rrts}, \cite{random_planner_wo_ik}, \cite{humanoid_motion_planning}, and many more. In the 
+RRT algorithm, an initial joint configuration is provided as the start node. The planner grows randomly from the start node while sampling from the search space to grow the tree 
+toward unexplored regions. Given that this planner can be biased to plan toward a goal configuration and handles high-dimensional search space well, it is suitable for motion
+planning with high DOF kinematics chains. 
 
+For the purposes of this paper, we wish to plan from a starting joint configuration to a  goal configuration, which can change over time, by generating a suitable and minimal
+trajectory for the robot to execute the task at hand. Despite the simplicity of the original RRT algorithm, the constraints enforced on this problem along with performance needs
+require modifications to be made to the original algorithm. Not only is there a workspace goal for the RRT to meet, but there are environmental obstacles and joint limit 
+constraints imposed on the robot arm. Due to the large number of configuration space solutions to reach a particular Cartesian endpoint for a redundant manipulator, sampling plays 
+a substantial role in reaching solutions quickly. These solutions may need tailoring to fit grasp orientation needs, which increases search time and complexity. Without
+an exceptional amount of time, a good estimate of the optimal node at any particular time can often be provided to reach the workspace goal in configuration space with the RRT. 
+Unfortunately, mapping workspace goals to configuration space goals does not have a simple solution of a closed-form for advanced high DOF manipulators, therefore RRT
+modifications were developed to exploit the Jacobian as a mapping from configuration space to workspace as in \cite{random_planner_wo_ik}.
 
-random grasps that were slow and infeasible to do in real-time in the past. These algorithms can now be resurrected and 
-reused successfully on modern hardware. The planner described in this paper is a versatile planner that has several options for planning. The first option is to 
-use only the Jacobian Transpose for planning. The algorithm for the RRT-JT from <paper1> influenced the JT planner implemented in this paper.  While this 
-method's computational time is small and plans are accurate, it's planning capabilities are somewhat limited. The Jacobian Pseudo-inverse (JPI) adds yet more 
-versatility to the planner by itself. The JPI planner utilized in this paper was influenced by multiple sources, primarily <paper2>. This method was also found 
-to be a bit slow in descending to the goal. A method was implemented to increase the speed of descent as described in <paper3>. The implementation of this method 
-allowed the planner to have two more variations, including the JT with speedup and JPI with speedup. 
-
-A test bed was built for testing these algorithms with the Gazebo simulator, Rviz, and the Microsoft Xbox Kinect for Point Cloud environment visualization. An 
-obstacle avoidance collision checker was added to detect obstacles and plan in avoidance of them during RRT construction. While experimenting with RRT 
-construction, the nodes were found quick enough to unravel from the normal RRT construction pattern. The pattern is to create the entire tree and prune nodes, 
-then to execute the path. That type of planning assumes a static environment that does not change during RRT construction. The planner framework presented in 
-this paper updates obstacles upon each available update in an asynchronous fashion. This functionality is provided by creating a new ROS node that solely updates 
-Kinect obstacle clouds for the robot to subscribe to with a ROS subscriber.
-
-The Baxter robot has two 7 degree of freedom (DOF) arms. A multi-threaded extension was added to the planner to plan for both arms simultaneously and checking 
-for obstacle collisions when validating solutions, while dynamically creating and executing RRT nodes on the robot. The obstacle collision checker filters 
-each arm from its own obstacle cloud when possible. This allows each arm to plan in accordance for the other arm, to avoid collisions. Most of the experiments 
-with the planner described in this paper isolate each arm from the other for testing accuracy and speed on complex goal poses. Poses ranging from easy to 
-complex are tested and compared. The Jacobian PINV method paired with random IK restarts turned out to be the most effective and efficient method for motion 
-planning with both arms as it is multi-threaded and modern computational power provides fast computation for the JPI.
-
+In this paper, an extension of the Jacobian Pseudoinverse-based RRT is made to include Inverse Kinematics in the random extension step of RRT construction.
+The purpose of using IK to determine a valid random node configuration is to assure that random solutions are reachable. As a result, the algorithm can leverage the random 
+nature of the RRT with a goal-directed extension that can quickly reach the goal by exploiting the Jacobian nature to link the configuration and workspace.
 The works related to the planner described in this paper are outlined in the next section. Following, the problem for dual-arm motion planning is established. 
 After that, sensor measurements and capturing data with the Kinect setup are discussed. Later, the implementation is discussed along with experimentation and 
 simulator set up. Second to last, experimentation results are analysed and compared. Lastly, the paper is concluded with the results of the experiments.
@@ -98,61 +88,72 @@ simulator set up. Second to last, experimentation results are analysed and compa
 
 \section{Related Work} \label{Related Work}
 
-The first planner method used to implement the baseline planner was the RRT-JT, as implemented in \cite{random_planner_wo_ik}. This method was useful for getting the 
-robot moving and setting up a groundwork for accuracy and performance. The paper combines the idea of an RRT with the usage of a goal-directed modification to 
-the typical RRT algorithm, causing the end effector to approach the goal in a direction leading it closer to the goal than previous RRT methods. Another valuable 
-aspect of this planner method is that it does not rely at all on IK solvers. The true pitch for this method is to be used in systems where IK solutions are hard 
-or cost-ineffective to find.
+The RRT-JT planner was implemented in \cite{random_planner_wo_ik}. The paper combines the idea of an RRT with the usage of a goal-directed modification to 
+the typical RRT algorithm, pulling the end effector to the goal with a certain probability, while randomly extending for the remainder of time. A valuable 
+aspect of the planner described in the paper is that it does not rely on an IK solver. This method is quite useful when IK solvers would be infeasible to use
+for high DOF robots. The planner implemented in the paper is highly based on that in \cite{integrated_path_planning} due to its nature of avoiding the use of
+IK for random goal extensions. As mentioned in the paper, the planner in \cite{integrated_path_planning} selects "the configuration in the search tree that 
+is closest to the workspace goal using a workspace distance metric and then extend out from this configuration in a random direction." Several advantages
+of this method are mentioned, including avoiding inaccurate solutions due to inaccurate IK solvers and faster convergence to the goal than the standard RRT
+algorithm. The method implemented in \cite{random_planner_wo_ik} goes even further by extending to the goal with a certain probability using jacobian
+transpose. The paper mentions that although this method is useful, joint limits are an issue. Joint limits cause the use of the RRT-JT method to not be
+independent, thus requiring some sort of alternative planner or restart method when solutions cannot be found.
 
-The second planner method that the JPINV is based on is described in \cite{humanoid_motion_planning}. This paper focuses on diverse outlooks to the RRT-JT planner and 
-make new additions with the PINV and IK methods. They also feature dual-arm planning algorithms that plan for both arms simultaneously. Their paper outlines a 
-modern framework of comparison for arm motion planning techniques that has provided this research with a sensible baseline for this planner using random PINV and 
-IK solutions.
+In \cite{humanoid_motion_planning}, several novel methods for motion planning are presented. A novel IK solver is presented that utilizes gradient descent
+in reachability spaces computed ahead of time and sampling of parameters in order to execute one or two arm query tasks. In terms of grasping objects,
+end effector poses are sought to lead to appropriate grasps for the object at hand and also be collision free in the workspace. The planner they propose
+is highly performance-oriented and requires a mere tens of milliseconds to solve a task query in contrast to iterative IK algorithms. One of the foreseeable downsides
+to this method is that it uses pre-defined grasp poses to randomly extend in the workspace. Such pre-defined grasps would take quite a bit of effort to pre-compute
+for each object in the workspace and translate to the configuration space.
 
-The third planner method is pioneered in the workspace goal region paper \cite{wgr_planning}. The paper utilizes concepts from \cite{humanoid_motion_planning} to 
-holistically solve the obstacle avoidance problem for motion planning. Workspace goal regions (WGR) are areas that the arm can operate in safely and efficiently. 
-Outlying area is either inefficient or an impossible point to reach to say the least. The more advanced gradient descent method used to improve upon the first 
-two planning methods is outlined in this paper. The method speeds up descent to local minima while the randomness is still at play in the planner because they 
-apply the RRT-JT method.  
-
-The fourth planner method was just discovered as an additional way to apply the JPINV method with the sped up gradient descent. The JT is switched with the 
-JPINV and the planner improves in performance and accuracy. \cite{humanoid_motion_planning} inspired the use of the PINV in replacement of the transpose for this 
-planning variation.
+The upcoming section describes the problem solved in this paper by using both the JPINV and random IK solver methods in one RRT.
 
 \section{Problem Formulation} \label{Problem Formulation}
 
-The problem of motion planning for humanoid robots with high degrees-of-freedom has been an ongoing area in robotics. The search for a faster, more responsive
-planning system with high accuracy is a hard one. The problem is that most planners assume a static environment and assume the robot has a large amount of time
-to determine a solution for a grasp. RRT planners typically take tens of seconds to solve solutions, but they do not move the robot until the path is complete.
-There ends up being a long turnaround time for some plans and other plans are impossible to execute due to joint limits and other workspace constraints.
+The problem at hand is the ability to solve motion planning tasks for high DOF robots with obstacle avoidance and little computational time. The JT addition to the typical RRT
+construct provides a goal-directed approach to motion planning, rather than an exhaustive random search. This allows the planner to reach the goal in a shorter amount of time, 
+making the RRT planning method more useful for real-time applications. The problem with the RRT-JT approach is that joint limits are met fairly quickly. The descent approach used 
+in this process also takes quite an amount of time to converge to the solution since the JT steps are small. \cite{humanoid_motion_planning} discusses the weaknesses of the JT 
+method, including those mentioned. Previous methods have shown that the JPINV and IK solvers each had their own upsides and downsides. The upsides of the JPINV is that it is easy 
+to approximate a solution to the problem by using gradient descent, but as downsides, there are singularities and joint limits that can be encountered, effectively disabling the 
+planner. The upsides of the IK planners is that they provide feasible solutions and perform search for you. The downsides of IK solvers are reaching singularities and not finding a 
+possible solution configuration for a given workspace goal although more than one exist. These problems can be overcome by repetitively checking for IK solutions at random points 
+within a limited distance step from the goal until a solution is found. 
 
-The JT addition to the typical RRT construct provides a goal-directed approach to motion planning, rather than an exhaustive random search. This allows the
-planner to reach the goal in a shorter amount of time, making the RRT planning method more useful for real-time applications. The problem with the RRT-JT 
-approach is that joint limits are met fairly quickly. The descent approach used in this process also takes quite an amount of time to converge to the solution 
-since the JT steps are small. \cite{humanoid_motion_planning} discusses the weaknesses of the JT method, including those mentioned.
+The planner described in this paper is a versatile planner that has several options for planning. The first option is the JT paired with random IK extensions. The algorithm 
+for the RRT-JT from \cite{random_planner_wo_ik} influenced the JT planner implemented in this paper. While this method's computational time is small and plans are accurate, it's 
+planning capabilities are somewhat limited. The second option, the JPINV paired with random IK, adds more versatility to the planner. The JPINV planner utilized in this paper is 
+influenced by multiple sources, primarily \cite{humanoid_motion_planning}. The JPINV may become stuck at joint limits, but such is rare and is typically overcome by the random 
+nature of the IK planner to extend from the closest node in the RRT to unexplored space. This method is a bit slow in descending to the goal, so a speed-up is implemented
+that uses the psuedo-inverse of the pseudo-inverse to make step sizes more concise to the goal.
 
-The PINV method was introduced in \cite{humanoid_motion_planning}. The problem with typical RRT planners is that they are single-threaded, so the entire solution 
-requires that the environment be static, neither arm moves, and the solution cannot be executed until both arms are planned for synchronously. Since real-
-time demands have grown for modern robots, single-threaded planning methods are out-dated and almost unusable. Given the previous speed of RRT
-construction, planning for multiple arms would be a hassle and very time-intensive process, making dual arm planning inefficient in modern environments.
+Given the problems of detecting workspace obstacles, experimenting with algorithms, and testing algorithm execution, a test bed with simulator capabilities is needed. 
+A test bed is built for testing these algorithms with the Gazebo simulator, Rviz, and the Microsoft Xbox Kinect for Point Cloud environment visualization. An 
+obstacle avoidance collision checker is added to detect obstacles and plan in avoidance of them during RRT construction. The RRT construction pattern is to create the entire tree 
+and prune nodes, then to execute the path. Although this type of planner usually assumes a static environment, the planner in this paper plans in accordance with real-time
+obstacle updates from the Xbox Kinect. The planner framework presented in this paper updates obstacles at each available point in time in an asynchronous fashion from the planner. 
+This decouples the obstacle detection from the planner, which greatly improves performance over existing planner designs. Obstacle detection and point cloud filtering functionality 
+is provided with a ROS node intentionally created to update Kinect obstacle clouds for the robot, using various filters to publish a valid obstacle cloud for each robot arm.
 
-One of the main problems with the PINV method besides computation time is the ability to easily get stuck in local minima while planning. Since the JPINV method draws
-the solution to the goal very quickly, there is little time to compensate for the large step size of the PINV method without solving a very hard problem. Fortunately,
-as discovered in \cite{wgr_planning}, there is some matrix math that alleviates the issue of controlling the gradient direction and magnitude without much complexity. 
-The planning algorithms presented in \cite{wgr_planning} are much more applicable for modern systems in terms of computing accuracy, utilizing a static workspace 
-region with minimum and maximum values that the arm can plan for solutions within, but this is actually a drawback for dynamic environments in most realistic humanoid 
-robot-oriented environments. Thus, some improvements must be made to this method for real-time collision avoidance support. This solution is not presented in a 
-generalized fashion for multiple arms, thus the performance of the solution has yet to be analysed in synchronous or asynchronous computation between two or more 7-
-dof arms. It can be assumed that running this planner synchronously for two or more limbs would be very difficult and time consuming. 
+The Baxter robot has two 7 degree of freedom (DOF) arms. A multi-threaded extension was added to the planner to allow for simultaneous construction of left and right arm
+RRTs while still checking for obstacle collisions and workspace constraints when validating solutions. The obstacle collision checker filters 
+each arm from its own obstacle cloud when possible. This allows each arm to plan in accordance for the other arm, to avoid collisions. The experiments 
+with the planner described in this paper isolate each arm from the other for testing accuracy and speed on complex goal poses. Poses ranging from easy to 
+complex are tested and compared. The Jacobian PINV method paired with random IK extensions turned out to be the most effective and efficient method for motion 
+planning with both arms as it is implemented in a multi-threaded fashion, allowing the algorithm to harness the parallelized computational power of a modern computer
+while still retaining the ability to solve for constraints imposed on the system by using the ROS publish/subscribe methodology.
 
 Overall, the solutions to most of these problems include the application of multi-threading and asynchronous updates, separating methods that are computationally 
-intensive or rely on time series data into their own nodes or threads in a program.
+intensive or rely on time series data into their own nodes or threads in the planner program.
 
 \section{Methodology} \label{Methodology}
 
-The planner needs to solve the problems presented in the problem formulation section. Most of the problems stem from hardware requirements, lack of parallel processing and 
-lack of real-time updates about environment obstacles and goal regions. The planner designed in this paper must parallelize the computationally intensive methods into 
-their own nodes or processing threads in the program for the robot. The first objective in the planner is to observe and avoid obstacles. The capture and filtering of data is covered in the next subsection.
+The planner proposed solves some of the problems presented in the problem formulation section above. Most of the problems stem from hardware requirements, lack of parallel 
+processing, and inability to combine multiple planning algorithms together due to performance constraints in older computing systems. The planner designed in this paper 
+parallelizes the computationally intensive methods into their own nodes or processing threads in the program for the robot. It utilizes both the JPINV and random IK methods
+of motion planning for nodes in a modified RRT construction algorithm based on those in \cite{random_planner_wo_ik} and \cite{humanoid_motion_planning} with the random extension
+step modified to use a variant of the typical RRT random extension step with the IK RRT algorithm in mind. The determination of workspace obstacles is an important factor
+in motion planning and will be further explored to come. The capture and filtering of environment point cloud data is covered in the next subsection.
 
 \subsection{Sensor Measurements} \label{Sensor Measurements}
 
@@ -162,43 +163,32 @@ The points are received in the kinect\_pc\_frame, however almost all planning al
 transformed from the kinect\_pc\_frame to the base frame in order to make any sense to the robot's planners. Following, the immediate workspace cloud is constructed of 
 points filtered above a certain z-position, since Baxter's arms cannot quite reach the floor on any usual base. The points can easily be filtered in x,y,z minimum and 
 maximum ranges. The point of such filtering is to speed up image processing and obstacle detection time, thus in turn speeding up planning time as well. Each arm is 
-considered it's own unit of execution, thus it will have it's own thread. each arm has different obstacle regions than the other to avoid because one arm is the obstacle
-of another arm. Thus, it is useful for each arm to have it's own filtered obstacle cloud. 
+considered its own unit of execution, thus it has its own thread. Each arm has different obstacle regions than the other because one arm is the obstacle
+of another arm. Thus, it is useful for each arm to have its own filtered obstacle cloud. 
 
-The left arm's obstacle cloud should have the left arm filtered out. The right arm's obstacle cloud should thus have the right arm filtered out of it. If these obstacle
+The left arm's obstacle cloud should have the left arm filtered out. The right arm's obstacle cloud should have the right arm filtered out of it. If these obstacle
 clouds are updated frequently and the planner can update its obstacle regions for each arm to plan with on-demand, then this method of filtering is a part of the solution
 to the problem of real-time planning in dynamic environments that the papers described thus far have lacked. The idea to do real-time updates stems from experimentation
-with the RRT. The RRT-JT implementation already appears that it can be de-coupled from the usual complete tree-building RRT solution before execution and be executed on a 
-per-node basis by the end effector while planning is still happening to reach the goal. The thought of this de-coupling brings in the concept of a time series data model, 
-where obstacle clouds are updated at each possible time step and the planner will receive and update itself with the latest obstacles over time with planning. Thus, the 
-solutions are based on random samples, will never be the same again and are unpredictable, but this provides a solid foundation for speed of the RRT-JT solver, since
-it is goal-directed and guaranteed to converge unless the goal is unreachable or would exceed goal limits.
+with the RRT concept. Obstacle determination from point cloud data can be decoupled from the RRT construction algorithm, so the RRT only has to check if a configuration is in 
+collision with the current obstacles, but it does not have to compute where the obstacles are beforehand. The thought of this de-coupling brings in the concept of a time series 
+data model, where obstacle clouds are updated at each possible time step. The planner shall receive and update itself with the latest obstacles over time with planning. Thus, the 
+planner solutions are based on random samples and are never the same again, but a solid improvement in the overall speed of the RRT planner with obstacle detection using both JPINV 
+and IK algorithms is made by separating nodes in this way.
 
-The idea of updating obstacles asynchronously, on-demand provides the ability to parallelize arm-planning and speed up the entire process tremendously. This idea also 
-allows data sharing between planner threads for most of the pre-processed workspace points, saving computational space, time and work. Not only did previous papers lack 
-the ability of asynchronously updating obstacles, but they treated the environment statically during RRT construction. In modern applications, a static environment
-assumption would crumble the foundation of the RRT solution, especially since RRTs can be slow for more complex trajectories and goal poses. The planners in this paper 
-will have a hook to the asynchronous obstacle updates and will receive the latest filtered obstacle clouds for their arm in order to provide the concept of real-time 
-motion planning with real-time obstacle avoidance to the extent of the speed of the point cloud unpacking, updating, transformation and filtering operations on the 
-hundreds of thousands of four-dimensional RGB-D data points.
+The idea of updating obstacles asynchronously, on-demand provides the ability to parallelize arm-planning and speed up the entire motion planning process tremendously.
+This idea also allows data sharing between planner threads for most of the pre-processed workspace points, saving computational space, time and work. Not only did previous papers 
+lack the ability of asynchronously updating obstacles, but they treated the environment statically during RRT construction. In modern applications, a static environment
+assumption would crumble the foundation of the RRT solution, especially since RRTs can be slow for more complex trajectories and goal poses. The planner in this paper
+has a hook to the asynchronous obstacle updates and receives the latest filtered obstacle clouds for the designated arm in order to provide the concept of dynamic 
+obstacle avoidance to the extent of speed that the obstacle filtering node can unpack, update, transform and filter the environment point cloud for each arm, 
+performing such operations on hundreds of thousands of four-dimensional RGB-D data points that designate the environment for the robot.
  
 \subsection{Planner Design}
 
-The planner design in this paper is inspired by all of the best qualities of the planners described in the papers mentioned. Modifications were made to the concept of a Rapidly-
-exploring Random Tree necessary to fuse the several successful Jacobian-based techniques together to provide reliable redundant manipulator planning. This hybrid 
-RRT planner provides the ability to use either the Jacobian-Transpose or Jacobian Pseudo-inverse-based methods for goal-directed path planning. For random path planning, a IK
-straight-line solver is used to sample solutions at random points within growing radii from the goal center until a goal is found or the maximum number of retires is met. 
-The pairing of the hybrid RRT and random IK-based planner methods should allow solutions to be found very quickly if possible, otherwise, the planner should get as close as 
-possible to the goal over time or once a goal distance threshold is met. 
-
-The planner framework consists of four different options for planning, using either the JT or JPINV as an error measurement technique. The surrounding planner structure was built
-purposefully for versatility and adherence to a specific planner interface that could be generalized for several arms. Given the Baxter robot has 2 arms, the version of
-the planner for this paper has two arms -- both the left and right arms -- implemented in a multi-threaded fashion to increase planner turnaround time and provide a 
-sense of real-time planning for modern humanoid robot applications. The planner considers all obstacles for each arm at frequently updated time steps and executes new
-nodes once they are verified as collision free and within a certain range from the goal. Several parameters exist in the planner that can be tweaked to make it
-perform better such as the allowed range to the goal. Currently, default settings have been set to ensure optimal performance for experimentation purposes.
-The planner details including pseudo-code to the RRT-JT and RRT-JPINV paired with random IK restarts as well as parameters that can be tuned will be covered in the 
-next section.
+The planner design in this paper is inspired by the better qualities of the planners described in the papers mentioned in the related work section. Modifications were made to the 
+concept of a Rapidly-exploring Random Tree in order for it to use both a random IK extension within a constrained Cartesian step size from the nearest configuration in the tree and 
+a JPINV goal-directed extension with a certain probability, p\_goal, to decrease the convergence time of the algorithm. The hybrid RRT-JPINV algorithm with random IK extensions
+will be discussed within the next subsections.
 
 \subsection{RRT-JT and RRT-JPINV with Random IK Restarts}
 
