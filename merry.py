@@ -277,7 +277,7 @@ class Merry:
         else:
             return self.right_kinematics
 
-    def grow(self, rrt, p_goal, num_secs=1000):
+    def grow(self, rrt, p_goal, num_secs=25):
         """
         Grows and executes a RRT-JT/Randomized IK planner
         for the given rrt instance (left or right arm).
@@ -290,7 +290,8 @@ class Merry:
         """
         if rrt is not None:
             rospy.loginfo("growing rrt...")
-            curr_time = time.time()
+            curr_time = int(round(time.time() * 1000))
+            num_secs = int(round(num_secs * 1000))
             stop_time = curr_time + num_secs
             while curr_time < stop_time:
                 rospy.loginfo("using ik random extend")
@@ -299,7 +300,9 @@ class Merry:
                 if p < p_goal:
                     rospy.loginfo("using jacobian extend")
                     rrt.extend_toward_goal()
-                curr_time = time.time()
+                curr_time = int(round(time.time() * 1000))
+            if curr_time > stop_time:
+                print "RAN OUT OF TIME!!"
         return rrt.get_pruned_tree()
 
     def grow_rrt(self, side, q_start, goal_pose, obs_dist_thresh=0.4, step_size=0.05, p_goal=0.5):
@@ -347,7 +350,7 @@ class Merry:
                     print "reached new left node destination..."
                 execute_new_nodes = False
                 rospy.loginfo("met left goal")
-
+                self.left_goal = None
             self.left_arm.set_joint_position_speed(0.0)
 
     def approach_right_goal(self):
@@ -372,7 +375,7 @@ class Merry:
                     print "reached new right node destination..."
                 execute_new_nodes = False
                 rospy.loginfo("met right goal")
-
+                self.right_goal = None
             self.right_arm.set_joint_position_speed(0.0)
 
     def approach_goals(self):

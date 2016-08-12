@@ -57,7 +57,7 @@ class RRT:
     l_max = []
 
     def __init__(self, q_start, goal_pose, kin_solver, side, joint_names, step_size, obstacles, obs_dist_thresh,
-                 dist_thresh=0.1):
+                 dist_thresh=0.04):
         """
         Constructor for RRT. Accepts a numpy array of starting angles, the goal pose, the kinematics solver instance
         for the RRT side arm, an ordered list of joint_names from base to end effector, a list of obstacle points that
@@ -191,7 +191,7 @@ class RRT:
         while True:
             x_old = self.fwd_kin(q_old)
             nd_x = self.workspace_delta_norm(x_old)
-            if nd_x > self.dist_thresh:
+            if nd_x < self.dist_thresh:
                 # solution reached at this point
                 break
             else:
@@ -203,8 +203,19 @@ class RRT:
                 q_new = q_old + d_q
                 q_new, all_at_limits = self.clip_joints_to_limits(q_new)
                 curr_dist = self.dist_to_goal(q_new)
-                if self.already_picked(q_new) or all_at_limits or curr_dist >= prev_dist + self.dist_thresh:
+                print "x_old " + str(x_old)
+                print "JPINV " + str(JPINV)
+                print "\nd_q " + str(d_q)
+                print "\nq_old " + str(q_old)
+                print "\nq_new " + str(q_new)
+                print "\ncurr_dist " + str(curr_dist)
+                if all_at_limits:
+                    print "jac: all at limits"
+                    break
+                elif self.already_picked(q_new) or curr_dist >= prev_dist + self.dist_thresh:
                     print "jac: soln already picked or joints at all limits or distance grew too far from goal..."
+                    print "jac: attempting ik random restart from node that keeps coming up or reaching joint limits"
+                    self.ik_extend_randomly(start_node=q_new)
                     break
                 else:
                     print "found new jacobian node!"
@@ -226,7 +237,7 @@ class RRT:
                 return q_new
         return None
 
-    def ik_extend_randomly(self, num_tries=5):
+    def ik_extend_randomly(self, num_tries=5, start_node=None):
         """
         Random straight-line extension using KDL IK planner for the RRT step.
         Generates up to 5 random points at the given step size from the nearest node to the goal in the rrt. Tries
@@ -234,8 +245,12 @@ class RRT:
         Adds the successful and valid step nodes to the RRT.
         :param num_tries: the number of times to regenerate a new random point at the given step size from
         the node closest to the goal in the rrt
+        :param start_node: the joint angles node to start from; if None, then the node closest to the goal will be used
         """
-        prev_dist_to_goal, q_old = self.closest_node_to_goal(False)
+        if start_node is not None:
+            prev_dist_to_goal, q_old = self.dist_to_goal(start_node), start_node
+        else:
+            prev_dist_to_goal, q_old = self.closest_node_to_goal(False)
         x_old = self.fwd_kin(q_old)
         num_tries_left = num_tries
         print "looking for random ik soln..."
@@ -297,17 +312,30 @@ class RRT:
         else:
             return False
 
-    def get_pruned_tree(self):
-        return self.nodes
-        # nodes_to_keep = []
-        # last_good_dist = 1000
-        # for i in range(len(self.nodes)):
-        #     node = self.nodes[i]
-        #     curr_dist = self.dist_to_goal(node)
-        #     if last_good_dist > curr_dist:
-        #         last_good_dist = curr_dist
-        #         nodes_to_keep.append(node)
-        # return nodes_to_keep
+    def get_pruned_tree(self, max_dist=2):
+        # select only nodes that fit minimally within ranges at step_size * k intervals until max_dist meters is reached
+        dist = self.step_size
+        pruned_tree = []
+        while dist < max_dist:
+            curr_dist = 1000
+            curr_node = None
+            for i in range(len(self.pos_nodes)):
+                node = self.pos_nodes[i]
+                dist_to_goal = node[0]
+                if dist < dist_to_goal < curr_dist:
+                    curr_dist = dist_to_goal
+                    curr_node = i
+            if curr_node is not None and curr_dist is not 1000:
+                pruned_tree.append(self.nodes[curr_node])
+            dist += self.step_size
+        unique = []
+        for node in pruned_tree:
+            for u in unique:
+                for i in range(len(node)):
+                    # TODO node[i] ==
+                    pass
+        [unique.append(item) for item in pruned_tree if item is not None and item not in unique]
+        return unique
 
     def most_recent_node(self):
         if len(self.nodes) == 0:
